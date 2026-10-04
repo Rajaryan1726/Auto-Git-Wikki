@@ -30,7 +30,9 @@ import {
   upsertPoints,
   type ChunkPayload,
 } from '../../services/qdrant.js';
+import { pruneWikiRunsOfOtherJobs, startWikiRun } from '../../services/wiki.js';
 import { inngest } from '../client.js';
+import { runWikiSteps } from './wiki.js';
 
 export const INDEX_REQUESTED_EVENT = 'repo/index.requested';
 export type IndexRequestedData = { jobId: string; repoId: string };
@@ -423,15 +425,35 @@ export const indexRepo = inngest.createFunction(
     // ---- Remove this repo's points that this job did not write (old commits) ----
     const removed = await step.run('cleanup-old-points', async () => {
       await assertJobRunning(jobId);
-      await setJobStep(jobId, 'finalize');
       const stale = await deleteStaleRepoPoints(ctx.collection, ctx.repoId, jobId);
       // Vectors of an earlier embedding model live in another collection; drop them too.
       const otherModels = await deleteRepoPointsOutside(ctx.repoId, ctx.collection);
       return stale + otherModels;
     });
 
+    // ---- Generating wiki: a failure here never fails the index (chat keeps working) ----
+    let wiki: { status: 'done' | 'failed' | 'skipped'; error: string | null } = {
+      status: 'skipped',
+      error: null,
+    };
+    try {
+      const { runId } = await step.run('wiki-start', async () => {
+        await assertJobRunning(jobId);
+        await setJobStep(jobId, 'wiki');
+        const { run } = await startWikiRun(ctx.repoId, jobId, 'index');
+        return { runId: run.id };
+      });
+      wiki = await runWikiSteps(step, runId);
+    } catch (err) {
+      wiki = { status: 'failed', error: err instanceof Error ? err.message : String(err) };
+      console.warn(
+        `[index] job ${jobId}: wiki step failed, finishing the index anyway: ${wiki.error}`,
+      );
+    }
+
     await step.run('finalize', async () => {
       await assertJobRunning(jobId);
+      await setJobStep(jobId, 'finalize');
       const stats: IndexJobStats = {
         ...usage,
         skippedFiles,
@@ -448,13 +470,21 @@ export const indexRepo = inngest.createFunction(
           .where(eq(repositories.id, ctx.repoId));
         await tx.delete(indexChunks).where(eq(indexChunks.jobId, jobId));
       });
+      // The wiki of earlier index jobs is no longer shown; drop it.
+      await pruneWikiRunsOfOtherJobs(ctx.repoId, jobId);
       console.log(
         `[index] job ${jobId} done: ${listing.files.length} files, ${chunksTotal} chunks embedded, ` +
           `${usage.reusedChunks} reused, ${usage.embedCalls} embed calls, ${usage.rateLimitHits} rate limits, ` +
-          `${removed} old points removed`,
+          `${removed} old points removed, wiki ${wiki.status}`,
       );
     });
 
-    return { commitSha: head.commitSha, chunks: chunksTotal, ...usage, removedPoints: removed };
+    return {
+      commitSha: head.commitSha,
+      chunks: chunksTotal,
+      ...usage,
+      removedPoints: removed,
+      wiki,
+    };
   },
 );

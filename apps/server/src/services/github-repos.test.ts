@@ -138,6 +138,8 @@ const job = (over: Partial<JobRow>): JobRow => ({
   currentStep: 'finalize',
   chunksTotal: 10,
   embeddedChunks: 10,
+  wikiPagesTotal: null,
+  wikiPagesDone: 0,
   status: 'done',
   commitSha: 'abc1234',
   filesTotal: 10,
@@ -159,7 +161,7 @@ test('deriveIndexStatus covers every state', () => {
     job({ status: 'running', currentStep: 'process_files', filesDone: 3 }),
   );
   assert.equal(running.state, 'indexing');
-  assert.equal(running.progress, 14); // 5% before files + 30% of the 30% file share
+  assert.equal(running.progress, 13); // 5% before files + 30% of the 25% file share
   assert.equal(running.commitSha, 'abc1234'); // previous good index still reported
   assert.equal(running.activeJobId, 'job-1');
   assert.equal(indexed.activeJobId, null);

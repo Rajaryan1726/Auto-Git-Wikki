@@ -156,6 +156,7 @@ threadsRouter.post('/:id/ask', async (req, res) => {
     for await (const e of streamAnswer(prepared, abort.signal)) {
       if (e.type === 'model') {
         model = e.model;
+        failed.push(...e.skipped.map((m) => `${m} (breaker open)`));
         failed.push(...e.failures.map((f) => f.model));
       } else if (e.type === 'token') {
         text += e.text;

@@ -41,6 +41,8 @@ const job = (over: Partial<Parameters<typeof describeSteps>[0]>) => ({
   filesDone: 4,
   chunksTotal: null as number | null,
   embeddedChunks: 0,
+  wikiPagesTotal: null as number | null,
+  wikiPagesDone: 0,
   ...over,
 });
 
@@ -48,7 +50,7 @@ test('describeSteps marks done/current/pending and file detail', () => {
   const steps = describeSteps(job({}));
   assert.deepEqual(
     steps.map((s) => s.state),
-    ['done', 'done', 'done', 'current', 'pending', 'pending'],
+    ['done', 'done', 'done', 'current', 'pending', 'pending', 'pending'],
   );
   assert.equal(steps.find((s) => s.id === 'process_files')!.detail, '4 / 10');
   assert.equal(steps.length, INDEX_STEPS.length);
@@ -64,11 +66,27 @@ test('describeSteps reports embedding progress in chunks', () => {
   assert.equal(embed.label, 'Embedding & saving');
 });
 
+test('describeSteps reports wiki progress in pages', () => {
+  const steps = describeSteps(
+    job({
+      currentStep: 'wiki',
+      chunksTotal: 5,
+      embeddedChunks: 5,
+      wikiPagesTotal: 9,
+      wikiPagesDone: 3,
+    }),
+  );
+  const wiki = steps.find((s) => s.id === 'wiki')!;
+  assert.equal(wiki.label, 'Generating wiki');
+  assert.equal(wiki.detail, '3 / 9 pages');
+  assert.equal(wiki.state, 'current');
+});
+
 test('describeSteps shows the failed step and all-done', () => {
   const failed = describeSteps(job({ status: 'failed', currentStep: 'list_files' }));
   assert.deepEqual(
     failed.map((s) => s.state),
-    ['done', 'done', 'failed', 'pending', 'pending', 'pending'],
+    ['done', 'done', 'failed', 'pending', 'pending', 'pending', 'pending'],
   );
   assert.ok(describeSteps(job({ status: 'done' })).every((s) => s.state === 'done'));
   const queued = describeSteps(job({ status: 'queued', currentStep: 'queued', filesTotal: 0 }));
@@ -86,6 +104,17 @@ test('jobProgress is monotonic across steps and capped below 100 until done', ()
     jobProgress(job({ currentStep: 'embed', filesDone: 10, chunksTotal: 50, embeddedChunks: 0 })),
     jobProgress(job({ currentStep: 'embed', filesDone: 10, chunksTotal: 50, embeddedChunks: 25 })),
     jobProgress(job({ currentStep: 'embed', filesDone: 10, chunksTotal: 50, embeddedChunks: 50 })),
+    jobProgress(job({ currentStep: 'wiki', filesDone: 10, chunksTotal: 50, embeddedChunks: 50 })),
+    jobProgress(
+      job({
+        currentStep: 'wiki',
+        filesDone: 10,
+        chunksTotal: 50,
+        embeddedChunks: 50,
+        wikiPagesTotal: 8,
+        wikiPagesDone: 4,
+      }),
+    ),
     jobProgress(
       job({ currentStep: 'finalize', filesDone: 10, chunksTotal: 50, embeddedChunks: 50 }),
     ),

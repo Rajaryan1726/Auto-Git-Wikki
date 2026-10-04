@@ -9,9 +9,10 @@ export const INDEX_STEPS = [
   { id: 'queued', label: 'Queued', weight: 0 },
   { id: 'resolve_commit', label: 'Resolving latest commit', weight: 2 },
   { id: 'list_files', label: 'Listing & filtering files', weight: 3 },
-  { id: 'process_files', label: 'Processing files', weight: 30 },
-  { id: 'embed', label: 'Embedding & saving', weight: 60 },
-  { id: 'finalize', label: 'Finishing', weight: 5 },
+  { id: 'process_files', label: 'Processing files', weight: 25 },
+  { id: 'embed', label: 'Embedding & saving', weight: 50 },
+  { id: 'wiki', label: 'Generating wiki', weight: 17 },
+  { id: 'finalize', label: 'Finishing', weight: 3 },
 ] as const;
 
 export type IndexStepId = (typeof INDEX_STEPS)[number]['id'];
@@ -23,6 +24,8 @@ export type StepJobFields = {
   filesDone: number;
   chunksTotal: number | null;
   embeddedChunks: number;
+  wikiPagesTotal: number | null;
+  wikiPagesDone: number;
 };
 
 function stepIndex(job: StepJobFields): number {
@@ -36,6 +39,10 @@ function filesFraction(job: StepJobFields): number {
 
 function embedFraction(job: StepJobFields): number {
   return job.chunksTotal ? Math.min(1, job.embeddedChunks / job.chunksTotal) : 0;
+}
+
+function wikiFraction(job: StepJobFields): number {
+  return job.wikiPagesTotal ? Math.min(1, job.wikiPagesDone / job.wikiPagesTotal) : 0;
 }
 
 export function stepLabel(id: string | null): string | null {
@@ -54,6 +61,7 @@ export function jobProgress(job: StepJobFields): number {
   const step = INDEX_STEPS[current]!;
   if (step.id === 'process_files') done += step.weight * filesFraction(job);
   if (step.id === 'embed') done += step.weight * embedFraction(job);
+  if (step.id === 'wiki') done += step.weight * wikiFraction(job);
   return Math.min(99, Math.round((done / total) * 100));
 }
 
@@ -73,6 +81,8 @@ export function describeSteps(job: StepJobFields): IndexJobStep[] {
         detail = `${job.filesDone} / ${job.filesTotal}`;
       } else if (s.id === 'embed' && job.chunksTotal !== null) {
         detail = `${job.embeddedChunks} / ${job.chunksTotal} chunks`;
+      } else if (s.id === 'wiki' && job.wikiPagesTotal !== null) {
+        detail = `${job.wikiPagesDone} / ${job.wikiPagesTotal} pages`;
       }
     }
     return { id: s.id, label: s.label, state, detail };

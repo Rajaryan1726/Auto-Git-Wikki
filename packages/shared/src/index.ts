@@ -5,3 +5,4 @@ export * from './health.js';
 export * from './index-jobs.js';
 export * from './repos.js';
 export * from './sse.js';
+export * from './wiki.js';

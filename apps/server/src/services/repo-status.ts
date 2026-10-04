@@ -7,6 +7,8 @@ export type JobRow = {
   currentStep: string | null;
   chunksTotal: number | null;
   embeddedChunks: number;
+  wikiPagesTotal: number | null;
+  wikiPagesDone: number;
   commitSha: string | null;
   filesTotal: number;
   filesDone: number;

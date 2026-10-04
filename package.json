@@ -25,7 +25,8 @@
     "dev:chunks": "tsx apps/server/src/scripts/dev-chunks.ts",
     "dev:search": "tsx apps/server/src/scripts/dev-search.ts",
     "eval:retrieval": "tsx apps/server/src/scripts/eval-retrieval.ts",
-    "dev:ask": "tsx apps/server/src/scripts/dev-ask.ts"
+    "dev:ask": "tsx apps/server/src/scripts/dev-ask.ts",
+    "dev:wiki": "tsx apps/server/src/scripts/dev-wiki.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

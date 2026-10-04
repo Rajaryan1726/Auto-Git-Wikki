@@ -67,6 +67,7 @@ async function main(): Promise<void> {
   for await (const e of streamAnswer(prepared)) {
     if (e.type === 'model') {
       model = e.model;
+      failed.push(...e.skipped.map((m) => `${m}: skipped (circuit breaker open)`));
       failed.push(...e.failures.map((f) => `${f.model}: ${f.message.slice(0, 80)}`));
     } else if (e.type === 'token') answer += e.text;
     else {

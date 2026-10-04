@@ -1,5 +1,6 @@
 import { createSseParser } from '@autowiki/shared';
 import { env } from '../lib/env.js';
+import { CircuitBreaker, isQuotaError, retryAfterMsFrom } from './circuit-breaker.js';
 
 /**
  * Text generation over the providers' REST streaming APIs.
@@ -7,15 +8,23 @@ import { env } from '../lib/env.js';
  *   OpenAI: /v1/responses with stream: true (response.output_text.delta events)
  * The provider follows the model id. `openStream` tries the primary model and, if it fails
  * before producing any text (quota, 429, 5xx, bad key, network), the fallback model.
+ * A quota / rate-limit error opens that provider's circuit breaker: until its retry time
+ * (60 s – 1 h) requests skip it and go straight to the next model.
  */
 
 export type ChatTurn = { role: 'user' | 'assistant'; content: string };
+
+export type TokenUsage = { inputTokens: number; outputTokens: number };
 
 export type GenerateRequest = {
   system: string;
   messages: ChatTurn[];
   maxOutputTokens?: number;
   signal?: AbortSignal;
+  /** Ask the provider for a JSON object (Gemini responseMimeType, OpenAI json_object). */
+  json?: boolean;
+  /** Called once per model attempt with the provider-reported token usage, if any. */
+  onUsage?: (usage: TokenUsage, model: string) => void;
 };
 
 export class LlmError extends Error {
@@ -23,6 +32,8 @@ export class LlmError extends Error {
     message: string,
     readonly status: number | null,
     readonly model: string,
+    /** Provider retry hint for rate-limit errors, in ms. */
+    readonly retryAfterMs: number | null = null,
   ) {
     super(message);
     this.name = 'LlmError';
@@ -39,9 +50,19 @@ export function providerForGenModel(model: string): GenProvider {
 
 type FetchLike = typeof fetch;
 
-async function errorText(res: Response): Promise<string> {
-  const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-  return body?.error?.message ?? `HTTP ${res.status}`;
+/** Shared by every generation call in this process (chat, query rewrite, wiki). */
+export const generationBreaker = new CircuitBreaker();
+
+type ErrorBody = { error?: { message?: string; details?: { retryDelay?: string }[] } };
+
+async function httpError(res: Response, model: string): Promise<LlmError> {
+  const body = (await res.json().catch(() => null)) as ErrorBody | null;
+  return new LlmError(
+    body?.error?.message ?? `HTTP ${res.status}`,
+    res.status,
+    model,
+    retryAfterMsFrom(res.headers, body),
+  );
 }
 
 /** Reads a fetch body as text chunks. */
@@ -82,31 +103,48 @@ async function* streamGemini(
           temperature: 0.2,
           maxOutputTokens: req.maxOutputTokens ?? 4096,
           thinkingConfig: { thinkingLevel: 'low' },
+          ...(req.json ? { responseMimeType: 'application/json' } : {}),
         },
       }),
     },
   );
-  if (!res.ok) throw new LlmError(await errorText(res), res.status, model);
+  if (!res.ok) throw await httpError(res, model);
 
   const parser = createSseParser();
+  let usage: TokenUsage | null = null;
   for await (const chunk of readChunks(res)) {
     for (const msg of parser.feed(chunk)) {
       const data = JSON.parse(msg.data) as {
-        error?: { message?: string; code?: number };
+        error?: { message?: string; code?: number; details?: { retryDelay?: string }[] };
         candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[];
+        usageMetadata?: {
+          promptTokenCount?: number;
+          candidatesTokenCount?: number;
+          thoughtsTokenCount?: number;
+        };
       };
       if (data.error) {
         throw new LlmError(
           data.error.message ?? 'Gemini stream error',
           data.error.code ?? null,
           model,
+          retryAfterMsFrom(null, data),
         );
+      }
+      // Cumulative: the last chunk carries the totals (thinking tokens are billed as output).
+      if (data.usageMetadata) {
+        const u = data.usageMetadata;
+        usage = {
+          inputTokens: u.promptTokenCount ?? 0,
+          outputTokens: (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0),
+        };
       }
       for (const part of data.candidates?.[0]?.content?.parts ?? []) {
         if (part.text && !part.thought) yield part.text;
       }
     }
   }
+  if (usage) req.onUsage?.(usage, model);
 }
 
 async function* streamOpenAI(
@@ -126,9 +164,10 @@ async function* streamOpenAI(
       input: req.messages.map((m) => ({ role: m.role, content: m.content })),
       stream: true,
       max_output_tokens: req.maxOutputTokens ?? 4096,
+      ...(req.json ? { text: { format: { type: 'json_object' } } } : {}),
     }),
   });
-  if (!res.ok) throw new LlmError(await errorText(res), res.status, model);
+  if (!res.ok) throw await httpError(res, model);
 
   const parser = createSseParser();
   for await (const chunk of readChunks(res)) {
@@ -137,13 +176,26 @@ async function* streamOpenAI(
         type?: string;
         delta?: string;
         message?: string;
-        response?: { error?: { message?: string } };
+        code?: string;
+        response?: {
+          error?: { message?: string; code?: string };
+          usage?: { input_tokens?: number; output_tokens?: number };
+        };
       };
       if (data.type === 'response.output_text.delta' && data.delta) yield data.delta;
-      else if (data.type === 'response.failed' || data.type === 'error') {
+      else if (data.type === 'response.completed' && data.response?.usage) {
+        req.onUsage?.(
+          {
+            inputTokens: data.response.usage.input_tokens ?? 0,
+            outputTokens: data.response.usage.output_tokens ?? 0,
+          },
+          model,
+        );
+      } else if (data.type === 'response.failed' || data.type === 'error') {
+        const code = data.response?.error?.code ?? data.code;
         throw new LlmError(
           data.response?.error?.message ?? data.message ?? 'OpenAI stream error',
-          null,
+          code === 'rate_limit_exceeded' || code === 'insufficient_quota' ? 429 : null,
           model,
         );
       }
@@ -165,8 +217,28 @@ export type OpenedStream = {
   model: string;
   /** Models that failed before this one, with their errors (for logging). */
   failures: { model: string; message: string }[];
+  /** Models skipped without a call because their provider's circuit breaker is open. */
+  skipped: string[];
   stream: AsyncGenerator<string>;
 };
+
+/** Opens the provider's breaker when the error is a quota / rate-limit error. */
+function noteFailure(model: string, err: unknown): void {
+  if (!(err instanceof LlmError)) return;
+  if (isQuotaError(err.status, err.message)) {
+    generationBreaker.trip(providerForGenModel(model), err.retryAfterMs, err.message);
+  }
+}
+
+/**
+ * Models in the order to try: those whose provider breaker is open are skipped. If every
+ * provider is open, all are tried anyway (better a likely failure than no attempt).
+ */
+export function routeModels(models: string[]): { order: string[]; skipped: string[] } {
+  const skipped = models.filter((m) => generationBreaker.isOpen(providerForGenModel(m)));
+  if (skipped.length === models.length) return { order: models, skipped: [] };
+  return { order: models.filter((m) => !skipped.includes(m)), skipped };
+}
 
 /**
  * Starts generation with the first model that produces text. A model that fails before
@@ -178,17 +250,20 @@ export async function openStream(
   fetchImpl: FetchLike = fetch,
 ): Promise<OpenedStream> {
   const failures: OpenedStream['failures'] = [];
-  for (const model of models) {
+  const { order, skipped } = routeModels(models);
+  for (const model of order) {
     const gen = streamText(model, req, fetchImpl);
     try {
       const first = await gen.next();
+      generationBreaker.succeed(providerForGenModel(model));
       async function* rest(): AsyncGenerator<string> {
         if (!first.done) yield first.value;
         yield* gen;
       }
-      return { model, failures, stream: rest() };
+      return { model, failures, skipped, stream: rest() };
     } catch (err) {
       if (req.signal?.aborted) throw err;
+      noteFailure(model, err);
       const message = err instanceof Error ? err.message : String(err);
       const status = err instanceof LlmError && err.status ? ` (${err.status})` : '';
       console.warn(`[llm] ${model} failed before streaming${status}: ${message.slice(0, 200)}`);
@@ -205,7 +280,7 @@ export async function openStream(
 
 export type AnswerEvent =
   /** A model started producing text (sent again after a reset). */
-  | { type: 'model'; model: string; failures: OpenedStream['failures'] }
+  | { type: 'model'; model: string; failures: OpenedStream['failures']; skipped: string[] }
   | { type: 'token'; text: string }
   /** The model failed mid-answer; discard the text so far, the next model restarts. */
   | { type: 'reset'; failedModel: string; reason: string };
@@ -222,12 +297,18 @@ export async function* resilientStream(
   let remaining = models;
   for (;;) {
     const opened = await openStream(req, remaining, fetchImpl); // throws if none can start
-    yield { type: 'model', model: opened.model, failures: opened.failures };
+    yield {
+      type: 'model',
+      model: opened.model,
+      failures: opened.failures,
+      skipped: opened.skipped,
+    };
     try {
       for await (const text of opened.stream) yield { type: 'token', text };
       return;
     } catch (err) {
       if (req.signal?.aborted) throw err;
+      noteFailure(opened.model, err);
       remaining = remaining.slice(remaining.indexOf(opened.model) + 1);
       const reason = err instanceof Error ? err.message : String(err);
       console.warn(`[llm] ${opened.model} failed mid-stream: ${reason.slice(0, 200)}`);
@@ -237,18 +318,41 @@ export async function* resilientStream(
   }
 }
 
-/** Non-streaming convenience (query rewriting): collects the full text, with fallback. */
+export type GeneratedText = {
+  text: string;
+  model: string;
+  /** Summed over every attempt (a failed partial answer is billed too); null if unreported. */
+  usage: TokenUsage | null;
+  /** Models skipped (breaker open) or failed before the one that answered. */
+  failedOrSkipped: string[];
+};
+
+/** Non-streaming convenience (query rewriting, wiki): collects the full text, with fallback. */
 export async function generateText(
   req: GenerateRequest,
   models?: string[],
   fetchImpl: FetchLike = fetch,
-): Promise<{ text: string; model: string }> {
+): Promise<GeneratedText> {
   let text = '';
   let model = '';
-  for await (const e of resilientStream(req, models, fetchImpl)) {
-    if (e.type === 'model') model = e.model;
-    else if (e.type === 'token') text += e.text;
-    else text = '';
+  let usage: TokenUsage | null = null;
+  const failedOrSkipped: string[] = [];
+  const onUsage = (u: TokenUsage, m: string) => {
+    usage = {
+      inputTokens: (usage?.inputTokens ?? 0) + u.inputTokens,
+      outputTokens: (usage?.outputTokens ?? 0) + u.outputTokens,
+    };
+    req.onUsage?.(u, m);
+  };
+  for await (const e of resilientStream({ ...req, onUsage }, models, fetchImpl)) {
+    if (e.type === 'model') {
+      model = e.model;
+      failedOrSkipped.push(...e.skipped, ...e.failures.map((f) => f.model));
+    } else if (e.type === 'token') text += e.text;
+    else {
+      failedOrSkipped.push(e.failedModel);
+      text = '';
+    }
   }
-  return { text, model };
+  return { text, model, usage, failedOrSkipped };
 }

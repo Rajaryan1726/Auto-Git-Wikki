@@ -166,6 +166,65 @@ export async function searchRepoPoints(
   }));
 }
 
+type RepoCommit = { repoId: string; commitSha: string };
+
+function repoCommitMust(f: RepoCommit) {
+  return [
+    { key: 'repo_id', match: { value: f.repoId } },
+    { key: 'commit_sha', match: { value: f.commitSha } },
+  ];
+}
+
+/** Every file path indexed for a repo at a commit (files that produced at least one chunk). */
+export async function listIndexedFiles(collection: string, f: RepoCommit): Promise<string[]> {
+  const paths = new Set<string>();
+  let offset: string | number | undefined;
+  for (;;) {
+    const page = await qdrant.scroll(collection, {
+      filter: { must: repoCommitMust(f) },
+      with_payload: ['file_path'],
+      with_vector: false,
+      limit: 1000,
+      offset,
+    });
+    for (const p of page.points) {
+      const path = (p.payload as { file_path?: unknown } | null)?.file_path;
+      if (typeof path === 'string') paths.add(path);
+    }
+    const next = page.next_page_offset;
+    if (next === null || next === undefined || typeof next === 'object') break;
+    offset = next;
+  }
+  return [...paths].sort();
+}
+
+export type FileChunk = Pick<ChunkPayload, 'file_path' | 'start_line' | 'end_line' | 'text'>;
+
+/** The indexed chunks of some files (any order), e.g. to rebuild a README or excerpts. */
+export async function fileChunks(
+  collection: string,
+  f: RepoCommit,
+  paths: string[],
+): Promise<FileChunk[]> {
+  if (paths.length === 0) return [];
+  const out: FileChunk[] = [];
+  let offset: string | number | undefined;
+  for (;;) {
+    const page = await qdrant.scroll(collection, {
+      filter: { must: [...repoCommitMust(f), { key: 'file_path', match: { any: paths } }] },
+      with_payload: ['file_path', 'start_line', 'end_line', 'text'],
+      with_vector: false,
+      limit: 500,
+      offset,
+    });
+    for (const p of page.points) out.push(p.payload as unknown as FileChunk);
+    const next = page.next_page_offset;
+    if (next === null || next === undefined || typeof next === 'object') break;
+    offset = next;
+  }
+  return out;
+}
+
 /** Removes every vector of a repo, in every code collection (repo deleted from GitHub). */
 export async function deleteRepoPoints(repoId: string): Promise<void> {
   const { collections } = await qdrant.getCollections();

@@ -27,6 +27,39 @@ export type IndexJobStats = {
 };
 
 export const indexJobStatus = pgEnum('index_job_status', ['queued', 'running', 'done', 'failed']);
+export const wikiRunStatus = pgEnum('wiki_run_status', ['running', 'done', 'failed']);
+
+/** Aggregates of one wiki generation run (Phase 5). */
+export type WikiRunStats = {
+  outlineModel?: string;
+  outlineAttempts?: number;
+  outlineMs?: number;
+  pagesGenerated?: number;
+  pagesFailed?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  /** Pages whose first draft contained unknown file paths (regenerated once). */
+  pagesRetriedForPaths?: number;
+  /** Pages where unknown paths remained after the retry and were un-linked. */
+  pagesWithRemovedPaths?: number;
+  removedPaths?: number;
+  models?: Record<string, number>;
+  durationMs?: number;
+};
+
+/** Per-page generation metadata. */
+export type WikiPageMeta = {
+  model: string;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  ms: number;
+  /** Models skipped (breaker open) or failed before `model` answered. */
+  fallbackFrom: string[];
+  /** Unknown paths in the first draft (triggered one retry). */
+  badPathsFirstDraft: string[];
+  /** Unknown paths still present after the retry; their backticks/links were removed. */
+  removedPaths: string[];
+};
 export const chatRole = pgEnum('chat_role', ['user', 'assistant']);
 
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
@@ -97,6 +130,9 @@ export const indexJobs = pgTable(
     // Null for jobs from before embeddings existed (Phase 3A); those never count as indexed.
     chunksTotal: integer('chunks_total'),
     embeddedChunks: integer('embedded_chunks').notNull().default(0),
+    // "Generating wiki" step progress (pages of this job's wiki run).
+    wikiPagesTotal: integer('wiki_pages_total'),
+    wikiPagesDone: integer('wiki_pages_done').notNull().default(0),
     // Id of the pipeline step that is running (or failed); see services/index-steps.ts.
     currentStep: text('current_step'),
     // Run statistics: embedding calls, rate-limit hits, timings.
@@ -146,6 +182,44 @@ export const indexChunks = pgTable(
   ],
 );
 
+/**
+ * One wiki generation for an index job: run automatically at the end of indexing
+ * (trigger "index") or on demand (trigger "regenerate", same job, no re-embedding).
+ * The wiki shown for a repo is the newest `done` run of its last successful job.
+ */
+export const wikiRuns = pgTable(
+  'wiki_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    repoId: uuid('repo_id')
+      .notNull()
+      .references(() => repositories.id, { onDelete: 'cascade' }),
+    indexJobId: uuid('index_job_id')
+      .notNull()
+      .references(() => indexJobs.id, { onDelete: 'cascade' }),
+    trigger: text('trigger').$type<'index' | 'regenerate'>().notNull(),
+    status: wikiRunStatus('status').notNull().default('running'),
+    pagesTotal: integer('pages_total'),
+    pagesDone: integer('pages_done').notNull().default(0),
+    /** The validated outline ({ pages: [...] }) once the outline step succeeded. */
+    outline: jsonb('outline'),
+    stats: jsonb('stats')
+      .$type<WikiRunStats>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    error: text('error'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('wiki_runs_job_started_idx').on(t.indexJobId, t.startedAt),
+    // One wiki generation per repo at a time.
+    uniqueIndex('wiki_runs_one_running_per_repo')
+      .on(t.repoId)
+      .where(sql`${t.status} = 'running'`),
+  ],
+);
+
 export const wikiPages = pgTable(
   'wiki_pages',
   {
@@ -156,18 +230,23 @@ export const wikiPages = pgTable(
     indexJobId: uuid('index_job_id')
       .notNull()
       .references(() => indexJobs.id, { onDelete: 'cascade' }),
+    wikiRunId: uuid('wiki_run_id')
+      .notNull()
+      .references(() => wikiRuns.id, { onDelete: 'cascade' }),
     slug: text('slug').notNull(),
     title: text('title').notNull(),
     parentSlug: text('parent_slug'),
     position: integer('position').notNull().default(0),
     contentMd: text('content_md').notNull(),
+    /** Code the page was written from: paths + line ranges (context blocks and excerpts). */
     sourceFiles: jsonb('source_files')
-      .$type<string[]>()
+      .$type<SourceRef[]>()
       .notNull()
       .default(sql`'[]'::jsonb`),
+    meta: jsonb('meta').$type<WikiPageMeta>(),
     createdAt: createdAt(),
   },
-  (t) => [unique('wiki_pages_job_slug_uq').on(t.indexJobId, t.slug)],
+  (t) => [unique('wiki_pages_run_slug_uq').on(t.wikiRunId, t.slug)],
 );
 
 export const chatThreads = pgTable(

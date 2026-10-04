@@ -16,6 +16,8 @@ const jobFields = {
   filesDone: indexJobs.filesDone,
   chunksTotal: indexJobs.chunksTotal,
   embeddedChunks: indexJobs.embeddedChunks,
+  wikiPagesTotal: indexJobs.wikiPagesTotal,
+  wikiPagesDone: indexJobs.wikiPagesDone,
   error: indexJobs.error,
   finishedAt: indexJobs.finishedAt,
 };
