@@ -1,10 +1,11 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { AppLayout } from '../components/app-layout';
 import { RedirectIfAuthed, RequireAuth } from '../features/auth/route-guards';
+import { ChatPage } from '../pages/chat-page';
 import { LoginPage } from '../pages/login-page';
 import { RepoPage } from '../pages/repo-page';
 import { RepositoriesPage } from '../pages/repositories-page';
-import { ChatPage, NotFoundPage, OverviewPage, SettingsPage } from '../pages/placeholder-pages';
+import { NotFoundPage, OverviewPage, SettingsPage } from '../pages/placeholder-pages';
 
 export const router = createBrowserRouter([
   {

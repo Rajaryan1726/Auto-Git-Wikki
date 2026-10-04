@@ -1,7 +1,10 @@
 import type { RepoIndexStatus } from '@autowiki/shared';
+import { jobProgress } from './index-steps.js';
 
 export type JobRow = {
+  id: string;
   status: 'queued' | 'running' | 'done' | 'failed';
+  currentStep: string | null;
   commitSha: string | null;
   filesTotal: number;
   filesDone: number;
@@ -18,17 +21,16 @@ export function deriveIndexStatus(
   latest: JobRow | null | undefined,
 ): RepoIndexStatus {
   const done = lastIndexed?.status === 'done' ? lastIndexed : null;
+  const active = latest && (latest.status === 'queued' || latest.status === 'running');
   const base = {
     commitSha: done?.commitSha ?? null,
     lastIndexedAt: done?.finishedAt?.toISOString() ?? null,
+    latestJobId: latest?.id ?? null,
+    activeJobId: active ? latest.id : null,
   };
 
-  if (latest && (latest.status === 'queued' || latest.status === 'running')) {
-    const progress =
-      latest.filesTotal > 0
-        ? Math.min(100, Math.round((latest.filesDone / latest.filesTotal) * 100))
-        : 0;
-    return { state: 'indexing', progress, error: null, ...base };
+  if (active) {
+    return { state: 'indexing', progress: jobProgress(latest), error: null, ...base };
   }
   if (latest?.status === 'failed') {
     return { state: 'failed', progress: null, error: latest.error, ...base };

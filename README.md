@@ -26,19 +26,20 @@ If port 5432 or 6333 is already taken, change `POSTGRES_HOST_PORT` / `QDRANT_HOS
 
 ## Scripts
 
-| Script                | What it does                                                 |
-| --------------------- | ------------------------------------------------------------ |
-| `npm run dev`         | Shared types (watch) + API server + web app                  |
-| `npm run build`       | Build shared, server and web                                 |
-| `npm run typecheck`   | Type-check every workspace                                   |
-| `npm run lint`        | ESLint across the repo                                       |
-| `npm test`            | Server unit + integration tests (integration needs infra up) |
-| `npm run format`      | Prettier write                                               |
-| `npm run db:generate` | Generate a Drizzle migration from the schema                 |
-| `npm run db:migrate`  | Apply pending migrations                                     |
-| `npm run infra:up`    | Start Postgres + Qdrant (waits until healthy)                |
-| `npm run infra:down`  | Stop the containers (data volumes are kept)                  |
-| `npm run inngest:dev` | Start the Inngest dev server                                 |
+| Script                                  | What it does                                                                                 |
+| --------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `npm run dev`                           | Shared types (watch) + API server + web app                                                  |
+| `npm run build`                         | Build shared, server and web                                                                 |
+| `npm run typecheck`                     | Type-check every workspace                                                                   |
+| `npm run lint`                          | ESLint across the repo                                                                       |
+| `npm test`                              | Server unit + integration tests (integration needs infra up)                                 |
+| `npm run dev:chunks -- <repoId> <path>` | Print the chunks for one file (`local <path>` for a file on disk; `--text` shows chunk text) |
+| `npm run format`                        | Prettier write                                                                               |
+| `npm run db:generate`                   | Generate a Drizzle migration from the schema                                                 |
+| `npm run db:migrate`                    | Apply pending migrations                                                                     |
+| `npm run infra:up`                      | Start Postgres + Qdrant (waits until healthy)                                                |
+| `npm run infra:down`                    | Stop the containers (data volumes are kept)                                                  |
+| `npm run inngest:dev`                   | Start the Inngest dev server                                                                 |
 
 ## Layout
 

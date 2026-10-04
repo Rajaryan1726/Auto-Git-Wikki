@@ -71,8 +71,12 @@ repositories
 index_jobs
   id (uuid pk), repo_id (fk repositories), status (enum: queued | running | done | failed),
   commit_sha, embedding_model, files_total (int), files_done (int),
+  current_step (text, nullable; id of the running step, or the step it failed on.
+    The ordered step list lives in apps/server/src/services/index-steps.ts and is
+    returned by GET /api/index-jobs/:id, so the UI never hardcodes steps),
   error (text), started_at, finished_at, created_at
   index (repo_id, created_at)
+  unique index (repo_id) where status in (queued, running)  -- one active job per repo
 
 wiki_pages
   id (uuid pk), repo_id (fk), index_job_id (fk), slug, title, parent_slug (nullable),

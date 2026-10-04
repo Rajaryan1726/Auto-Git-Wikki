@@ -3,6 +3,7 @@ import { FolderGit2, LayoutDashboard, MessageSquare, Settings } from 'lucide-rea
 import type { LucideIcon } from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
 import { UserMenu } from './user-menu';
+import { SidebarIndexing } from '../features/index-jobs/sidebar-indexing';
 
 type NavItem = { to: string; label: string; icon: LucideIcon; end?: boolean };
 
@@ -23,7 +24,7 @@ function navClass({ isActive }: { isActive: boolean }): string {
 
 export function Sidebar() {
   return (
-    <aside className="flex flex-col gap-4 border-b border-border bg-surface p-4 md:sticky md:top-0 md:h-screen md:w-64 md:shrink-0 md:border-r md:border-b-0">
+    <aside className="flex flex-col gap-4 border-b border-border bg-surface p-4 md:sticky md:top-0 md:h-screen md:w-64 md:shrink-0 md:overflow-y-auto md:border-r md:border-b-0">
       <div className="flex items-center justify-between gap-2">
         <NavLink to="/" className="flex min-h-11 items-center gap-2 rounded-md px-1">
           <span className="flex h-8 w-8 items-center justify-center rounded-sm bg-accent font-heading text-base font-bold text-on-accent">
@@ -45,6 +46,8 @@ export function Sidebar() {
           ))}
         </ul>
       </nav>
+
+      <SidebarIndexing />
 
       <div className="flex flex-col gap-3 border-t border-border pt-4 md:mt-auto">
         <ThemeToggle variant="full" />

@@ -1,0 +1,2 @@
+ALTER TABLE "index_jobs" ADD COLUMN "current_step" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "index_jobs_one_active_per_repo" ON "index_jobs" USING btree ("repo_id") WHERE "index_jobs"."status" in ('queued', 'running');

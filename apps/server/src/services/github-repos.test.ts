@@ -134,6 +134,8 @@ test('listUserRepos throws when a later page fails or is rate limited', async ()
 });
 
 const job = (over: Partial<JobRow>): JobRow => ({
+  id: 'job-1',
+  currentStep: 'finalize',
   status: 'done',
   commitSha: 'abc1234',
   filesTotal: 10,
@@ -150,12 +152,21 @@ test('deriveIndexStatus covers every state', () => {
   assert.equal(indexed.state, 'indexed');
   assert.equal(indexed.commitSha, 'abc1234');
 
-  const running = deriveIndexStatus(job({}), job({ status: 'running', filesDone: 3 }));
+  const running = deriveIndexStatus(
+    job({}),
+    job({ status: 'running', currentStep: 'process_files', filesDone: 3 }),
+  );
   assert.equal(running.state, 'indexing');
-  assert.equal(running.progress, 30);
+  assert.equal(running.progress, 34); // 7% before files + 30% of the 90% file share
   assert.equal(running.commitSha, 'abc1234'); // previous good index still reported
+  assert.equal(running.activeJobId, 'job-1');
+  assert.equal(indexed.activeJobId, null);
+  assert.equal(indexed.latestJobId, 'job-1');
 
-  const queued = deriveIndexStatus(null, job({ status: 'queued', filesTotal: 0, filesDone: 0 }));
+  const queued = deriveIndexStatus(
+    null,
+    job({ status: 'queued', currentStep: 'queued', filesTotal: 0, filesDone: 0 }),
+  );
   assert.deepEqual([queued.state, queued.progress], ['indexing', 0]);
 
   const failed = deriveIndexStatus(null, job({ status: 'failed', error: 'boom' }));

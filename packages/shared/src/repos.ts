@@ -21,6 +21,10 @@ export const repoIndexStatusSchema = z.object({
   lastIndexedAt: z.string().nullable(),
   /** Error of the latest job when it failed. */
   error: z.string().nullable(),
+  /** Most recent job of any status (for the progress panel / failure details). */
+  latestJobId: z.string().nullable(),
+  /** Set while a job is queued or running. */
+  activeJobId: z.string().nullable(),
 });
 export type RepoIndexStatus = z.infer<typeof repoIndexStatusSchema>;
 

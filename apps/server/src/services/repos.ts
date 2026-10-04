@@ -10,6 +10,7 @@ const jobFields = {
   id: indexJobs.id,
   repoId: indexJobs.repoId,
   status: indexJobs.status,
+  currentStep: indexJobs.currentStep,
   commitSha: indexJobs.commitSha,
   filesTotal: indexJobs.filesTotal,
   filesDone: indexJobs.filesDone,

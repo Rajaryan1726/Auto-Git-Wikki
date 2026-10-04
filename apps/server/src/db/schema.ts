@@ -10,6 +10,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
@@ -82,12 +83,20 @@ export const indexJobs = pgTable(
     embeddingModel: text('embedding_model').notNull(),
     filesTotal: integer('files_total').notNull().default(0),
     filesDone: integer('files_done').notNull().default(0),
+    // Id of the pipeline step that is running (or failed); see services/index-steps.ts.
+    currentStep: text('current_step'),
     error: text('error'),
     startedAt: timestamp('started_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [index('index_jobs_repo_created_idx').on(t.repoId, t.createdAt)],
+  (t) => [
+    index('index_jobs_repo_created_idx').on(t.repoId, t.createdAt),
+    // At most one queued/running job per repo, enforced by the database.
+    uniqueIndex('index_jobs_one_active_per_repo')
+      .on(t.repoId)
+      .where(sql`${t.status} in ('queued', 'running')`),
+  ],
 );
 
 export const wikiPages = pgTable(

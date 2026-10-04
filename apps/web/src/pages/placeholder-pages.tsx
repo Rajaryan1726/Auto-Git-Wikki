@@ -1,5 +1,4 @@
-import { Link, useSearchParams } from 'react-router-dom';
-import { useRepo } from '../features/repos/api';
+import { Link } from 'react-router-dom';
 import { HealthStatus } from '../components/health-status';
 import { PageHeader, Placeholder } from '../components/page-header';
 
@@ -11,22 +10,6 @@ export function OverviewPage() {
         <Placeholder>Overview stats will appear here.</Placeholder>
         <HealthStatus />
       </div>
-    </>
-  );
-}
-
-export function ChatPage() {
-  const [params] = useSearchParams();
-  const repo = useRepo(params.get('repo') ?? undefined);
-  return (
-    <>
-      <PageHeader title="Chat" subtitle="Ask questions about an indexed repository." />
-      {repo.data && (
-        <p className="mb-4 inline-flex rounded-full border border-border bg-raised px-3 py-1 font-mono text-sm">
-          {repo.data.fullName}
-        </p>
-      )}
-      <Placeholder>Chat threads will appear here.</Placeholder>
     </>
   );
 }

@@ -2,6 +2,17 @@ import { HttpError } from '../lib/http-error.js';
 
 export const GITHUB_API_ORIGIN = 'https://api.github.com';
 
+/** A rate-limit error that knows when GitHub will accept requests again. */
+export class GithubRateLimitError extends HttpError {
+  constructor(
+    message: string,
+    readonly retryAt: Date,
+  ) {
+    super(429, 'GITHUB_RATE_LIMITED', message);
+    this.name = 'GithubRateLimitError';
+  }
+}
+
 /** A GitHub API call already authorized as one user; `path` is relative to the API origin. */
 export type GithubFetch = (path: string, init?: RequestInit) => Promise<Response>;
 
@@ -26,27 +37,25 @@ function minutesUntil(epochSeconds: number, now: number): number {
  * Detects primary (`x-ratelimit-remaining: 0`) and secondary (`retry-after`) rate limits.
  * Returns an HttpError to throw, or null if the response is not rate limited.
  */
-export function rateLimitError(res: Response, now = Date.now()): HttpError | null {
+export function rateLimitError(res: Response, now = Date.now()): GithubRateLimitError | null {
   if (res.status !== 403 && res.status !== 429) return null;
 
   const remaining = res.headers.get('x-ratelimit-remaining');
   const reset = Number(res.headers.get('x-ratelimit-reset'));
   if (remaining === '0' && Number.isFinite(reset) && reset > 0) {
     const minutes = minutesUntil(reset, now);
-    return new HttpError(
-      429,
-      'GITHUB_RATE_LIMITED',
+    return new GithubRateLimitError(
       `GitHub API rate limit reached. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
+      new Date(reset * 1000),
     );
   }
 
   const retryAfter = Number(res.headers.get('retry-after'));
   if (Number.isFinite(retryAfter) && retryAfter > 0) {
     const minutes = Math.max(1, Math.ceil(retryAfter / 60));
-    return new HttpError(
-      429,
-      'GITHUB_RATE_LIMITED',
+    return new GithubRateLimitError(
       `GitHub is temporarily limiting requests. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
+      new Date(now + retryAfter * 1000),
     );
   }
   return null;

@@ -51,6 +51,9 @@ export function useRepos(q: string, filter: RepoFilter) {
     },
     placeholderData: keepPreviousData,
     retry: false,
+    // Keep card badges and progress bars live while something is indexing.
+    refetchInterval: (query) =>
+      query.state.data?.repos.some((r) => r.status.state === 'indexing') ? 3000 : false,
   });
 }
 

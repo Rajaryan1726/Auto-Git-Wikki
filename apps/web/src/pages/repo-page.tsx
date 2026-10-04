@@ -1,50 +1,72 @@
-import { useRef, type KeyboardEvent } from 'react';
+import { useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   BookOpen,
   ChevronRight,
+  CircleAlert,
+  CircleCheck,
   ExternalLink,
   FileCode2,
   GitBranch,
   History,
+  Info,
+  LoaderCircle,
   MessageSquare,
   RefreshCw,
   SearchX,
+  Sparkles,
 } from 'lucide-react';
-import type { RepoSummary } from '@autowiki/shared';
-import { useRepo } from '../features/repos/api';
+import type { IndexJob, RepoSummary } from '@autowiki/shared';
 import {
-  IndexProgress,
-  LanguageDot,
-  StatusBadge,
-  VisibilityPill,
-} from '../features/repos/components';
+  isActiveJob,
+  useIndexJob,
+  useRefreshWhenJobEnds,
+  useRepoIndexJobs,
+  useStartIndex,
+} from '../features/index-jobs/api';
+import {
+  IndexFailedPanel,
+  IndexProgressPanel,
+  JobDuration,
+  JobStatusBadge,
+} from '../features/index-jobs/components';
+import { shortSha } from '../features/index-jobs/format';
+import { useRepo } from '../features/repos/api';
+import { LanguageDot, VisibilityPill } from '../features/repos/components';
 import { repoUpdatedAt } from '../features/repos/format';
 import { ApiRequestError } from '../lib/api';
 import { relativeTime } from '../lib/time';
 import { buttonClass } from '../lib/ui';
 
-const TABS = [
-  {
-    id: 'wiki',
-    label: 'Wiki',
-    icon: BookOpen,
-    empty: 'No wiki yet. Index this repository to generate its wiki.',
-  },
-  {
-    id: 'files',
-    label: 'Files',
-    icon: FileCode2,
-    empty: 'Indexed files will be listed here after the first index.',
-  },
-  {
-    id: 'history',
-    label: 'Index history',
-    icon: History,
-    empty: 'No index runs yet.',
-  },
-] as const;
-type TabId = (typeof TABS)[number]['id'];
+/** Everything the page needs to know about indexing, derived from repo + latest job. */
+type IndexView = {
+  job: IndexJob | undefined;
+  /** An earlier index finished successfully (its data stays valid during a re-index). */
+  hasIndex: boolean;
+  active: boolean;
+  failed: boolean;
+  start: () => void;
+  isStarting: boolean;
+  startError: Error | null;
+};
+
+function useIndexView(repo: RepoSummary): IndexView {
+  const job = useIndexJob(repo.status.latestJobId).data;
+  useRefreshWhenJobEnds(job);
+  const startIndex = useStartIndex(repo.id);
+  const active = job ? isActiveJob(job) : repo.status.state === 'indexing';
+  const failed = !active && (job ? job.status === 'failed' : repo.status.state === 'failed');
+  return {
+    job,
+    // A just-finished job counts before the repo summary has been refetched (no flash).
+    hasIndex: repo.status.commitSha !== null || job?.status === 'done',
+    active,
+    failed,
+    start: () => startIndex.mutate(),
+    isStarting: startIndex.isPending,
+    startError: startIndex.error,
+  };
+}
 
 function Breadcrumb({ name }: { name?: string }) {
   return (
@@ -66,9 +88,96 @@ function Breadcrumb({ name }: { name?: string }) {
   );
 }
 
-function RepoHeader({ repo }: { repo: RepoSummary }) {
+function IndexButton({ view, label }: { view: IndexView; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={view.start}
+      disabled={view.isStarting}
+      className={buttonClass.primary}
+    >
+      {view.isStarting ? (
+        <LoaderCircle size={16} className="animate-spin" aria-hidden />
+      ) : (
+        <Sparkles size={16} aria-hidden />
+      )}
+      {label}
+    </button>
+  );
+}
+
+/** Header buttons for each index state. */
+function RepoActions({ repo, view }: { repo: RepoSummary; view: IndexView }) {
   const navigate = useNavigate();
-  const indexed = repo.status.state === 'indexed' || repo.status.commitSha !== null;
+  const chat = (
+    <button
+      type="button"
+      onClick={() => navigate(`/chat?repo=${repo.id}`)}
+      className={buttonClass.primary}
+    >
+      <MessageSquare size={16} aria-hidden />
+      Chat with repo
+    </button>
+  );
+
+  if (view.active) {
+    return (
+      <>
+        <button type="button" disabled className={buttonClass.secondary}>
+          <LoaderCircle size={16} className="animate-spin" aria-hidden />
+          Indexing…
+        </button>
+        {view.hasIndex && chat}
+      </>
+    );
+  }
+  if (view.failed) return view.hasIndex ? chat : null; // Retry lives in the failure panel
+  if (view.hasIndex) {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={view.start}
+          disabled={view.isStarting}
+          className={buttonClass.secondary}
+        >
+          <RefreshCw
+            size={16}
+            aria-hidden
+            className={view.isStarting ? 'animate-spin' : undefined}
+          />
+          Re-index
+        </button>
+        {chat}
+      </>
+    );
+  }
+  return <IndexButton view={view} label="Index repository" />;
+}
+
+function IndexedLine({ repo, job }: { repo: RepoSummary; job: IndexJob | undefined }) {
+  const fromJob = job?.status === 'done' ? job : null;
+  const sha = repo.status.commitSha ?? fromJob?.commitSha ?? null;
+  const at = repo.status.lastIndexedAt ?? fromJob?.finishedAt ?? null;
+  if (!sha) return null;
+  return (
+    <p className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-border pt-4 text-sm text-muted">
+      <CircleCheck size={16} className="text-success" aria-hidden />
+      <span className="font-medium text-success">Indexed</span>·
+      <a
+        href={`${repo.htmlUrl}/commit/${sha}`}
+        target="_blank"
+        rel="noreferrer"
+        className="font-mono text-text hover:underline"
+      >
+        {shortSha(sha)}
+      </a>
+      {at && <>· {relativeTime(at)}</>}
+    </p>
+  );
+}
+
+function RepoHeader({ repo, view }: { repo: RepoSummary; view: IndexView }) {
   return (
     <section className="rounded-lg border border-border bg-surface p-5 md:p-6">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -108,41 +217,150 @@ function RepoHeader({ repo }: { repo: RepoSummary }) {
                 View on GitHub
                 <ExternalLink size={12} aria-hidden />
               </a>
-              <StatusBadge status={repo.status} showCommit />
             </div>
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          {/* Indexing is wired up in Phase 3. */}
-          <button
-            type="button"
-            disabled
-            title="Indexing is not available yet"
-            className={buttonClass.secondary}
-          >
-            <RefreshCw size={16} aria-hidden />
-            {indexed ? 'Re-index' : 'Index'}
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate(`/chat?repo=${repo.id}`)}
-            className={buttonClass.primary}
-          >
-            <MessageSquare size={16} aria-hidden />
-            Chat with repo
-          </button>
+          <RepoActions repo={repo} view={view} />
         </div>
       </div>
-      {repo.status.state === 'indexing' && (
-        <div className="mt-5">
-          <IndexProgress progress={repo.status.progress ?? 0} />
-        </div>
+      {!view.active && !view.failed && <IndexedLine repo={repo} job={view.job} />}
+      {!view.hasIndex && !view.active && !view.failed && (
+        <p className="mt-4 border-t border-border pt-4 text-sm text-muted">
+          Not indexed yet. Index this repository to generate its wiki and chat with it.
+        </p>
       )}
     </section>
   );
 }
 
-function RepoTabs() {
+function IndexStatusArea({ view }: { view: IndexView }) {
+  return (
+    <>
+      {view.startError && (
+        <p
+          role="alert"
+          className="mt-4 flex items-start gap-2 rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger"
+        >
+          <CircleAlert size={18} className="mt-0.5 shrink-0" aria-hidden />
+          {view.startError.message}
+        </p>
+      )}
+      {view.active && view.hasIndex && (
+        <p className="mt-4 flex items-start gap-2 rounded-lg border border-border bg-raised px-4 py-3 text-sm text-muted">
+          <Info size={18} className="mt-0.5 shrink-0" aria-hidden />
+          Re-indexing — answers use the previous version until it finishes.
+        </p>
+      )}
+      {view.active && view.job && <IndexProgressPanel job={view.job} />}
+      {view.failed && view.job && (
+        <IndexFailedPanel job={view.job} onRetry={view.start} isRetrying={view.isStarting} />
+      )}
+    </>
+  );
+}
+
+const TABS = [
+  { id: 'wiki', label: 'Wiki', icon: BookOpen },
+  { id: 'files', label: 'Files', icon: FileCode2 },
+  { id: 'history', label: 'Index history', icon: History },
+] as const;
+type TabId = (typeof TABS)[number]['id'];
+
+function EmptyPanel({ icon: Icon, children }: { icon: typeof BookOpen; children: ReactNode }) {
+  return (
+    <div className="flex flex-col items-center rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center text-sm text-muted">
+      <Icon size={22} aria-hidden className="mb-3" />
+      {children}
+    </div>
+  );
+}
+
+function WikiPanel({ view }: { view: IndexView }) {
+  if (view.active && !view.hasIndex) {
+    return (
+      <EmptyPanel icon={BookOpen}>The wiki will appear here after indexing finishes.</EmptyPanel>
+    );
+  }
+  if (!view.hasIndex) {
+    return (
+      <EmptyPanel icon={BookOpen}>
+        <p>No wiki yet. Index this repository to generate its wiki.</p>
+        {!view.failed && (
+          <div className="mt-4">
+            <IndexButton view={view} label="Index repository" />
+          </div>
+        )}
+      </EmptyPanel>
+    );
+  }
+  return (
+    <EmptyPanel icon={BookOpen}>The wiki for this index has not been generated yet.</EmptyPanel>
+  );
+}
+
+function HistoryPanel({ repo }: { repo: RepoSummary }) {
+  const jobs = useRepoIndexJobs(repo.id);
+  if (jobs.isPending) {
+    return (
+      <div className="space-y-2" role="status" aria-label="Loading index history">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-14 animate-pulse rounded-md bg-soft" />
+        ))}
+      </div>
+    );
+  }
+  if (jobs.error) {
+    return <EmptyPanel icon={CircleAlert}>Could not load history: {jobs.error.message}</EmptyPanel>;
+  }
+  if (jobs.data.length === 0) return <EmptyPanel icon={History}>No index runs yet.</EmptyPanel>;
+
+  return (
+    <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
+      {jobs.data.map((job) => (
+        <li
+          key={job.id}
+          className="grid gap-x-4 gap-y-1 px-4 py-3 text-sm sm:grid-cols-[7rem_1fr_auto] sm:items-center"
+        >
+          <span>
+            <JobStatusBadge job={job} />
+          </span>
+          <div className="min-w-0">
+            <p className="flex flex-wrap gap-x-3 text-muted">
+              <span title={new Date(job.createdAt).toLocaleString()}>
+                {relativeTime(job.createdAt)}
+              </span>
+              {job.commitSha && (
+                <a
+                  href={`${repo.htmlUrl}/commit/${job.commitSha}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-text hover:underline"
+                >
+                  {shortSha(job.commitSha)}
+                </a>
+              )}
+              <span>
+                {job.filesDone}/{job.filesTotal} files
+              </span>
+            </p>
+            {job.status === 'failed' && job.error && (
+              <p className="mt-0.5 text-xs text-danger [overflow-wrap:anywhere]">
+                {job.currentStepLabel && <>At “{job.currentStepLabel}”: </>}
+                {job.error}
+              </p>
+            )}
+          </div>
+          <span className="text-xs text-muted sm:text-right">
+            <JobDuration job={job} />
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function RepoTabs({ repo, view }: { repo: RepoSummary; view: IndexView }) {
   const [params, setParams] = useSearchParams();
   const active: TabId = TABS.some((t) => t.id === params.get('tab'))
     ? (params.get('tab') as TabId)
@@ -176,8 +394,6 @@ function RepoTabs() {
     e.preventDefault();
     select(TABS[target]!.id, true);
   };
-
-  const tab = TABS.find((t) => t.id === active)!;
 
   return (
     <section className="mt-6">
@@ -216,13 +432,18 @@ function RepoTabs() {
       </div>
       <div
         role="tabpanel"
-        id={`panel-${tab.id}`}
-        aria-labelledby={`tab-${tab.id}`}
+        id={`panel-${active}`}
+        aria-labelledby={`tab-${active}`}
         tabIndex={0}
-        className="mt-4 rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center text-sm text-muted"
+        className="mt-4"
       >
-        <tab.icon size={22} aria-hidden className="mx-auto mb-3" />
-        {tab.empty}
+        {active === 'wiki' && <WikiPanel view={view} />}
+        {active === 'files' && (
+          <EmptyPanel icon={FileCode2}>
+            Indexed files will be listed here after the first index.
+          </EmptyPanel>
+        )}
+        {active === 'history' && <HistoryPanel repo={repo} />}
       </div>
     </section>
   );
@@ -244,6 +465,18 @@ function HeaderSkeleton() {
         </div>
       </div>
     </div>
+  );
+}
+
+function RepoView({ repo }: { repo: RepoSummary }) {
+  const view = useIndexView(repo);
+  return (
+    <>
+      <Breadcrumb name={repo.name} />
+      <RepoHeader repo={repo} view={view} />
+      <IndexStatusArea view={view} />
+      <RepoTabs repo={repo} view={view} />
+    </>
   );
 }
 
@@ -286,11 +519,5 @@ export function RepoPage() {
     );
   }
 
-  return (
-    <>
-      <Breadcrumb name={repo.data.name} />
-      <RepoHeader repo={repo.data} />
-      <RepoTabs />
-    </>
-  );
+  return <RepoView repo={repo.data} />;
 }
