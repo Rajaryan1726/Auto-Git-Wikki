@@ -57,5 +57,6 @@ export type ChatStreamEvent =
   | { event: 'token'; data: { text: string } }
   /** The model failed mid-answer; clear the text so far, a fallback model restarts it. */
   | { event: 'reset'; data: { reason: string } }
-  | { event: 'done'; data: { messageId: string; model: string } }
+  /** memoryCount: user memories used to personalise this answer (0 = none). */
+  | { event: 'done'; data: { messageId: string; model: string; memoryCount: number } }
   | { event: 'error'; data: { code: string; message: string } };

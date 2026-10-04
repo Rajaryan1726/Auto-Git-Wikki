@@ -224,3 +224,18 @@ test('token usage is reported for Gemini and OpenAI', async () => {
   const o = await generateText(req, ['gpt-6-luna'], openai);
   assert.deepEqual(o.usage, { inputTokens: 50, outputTokens: 7 });
 });
+
+test('OpenAI json mode adds the word "json" to the input when it is missing', async () => {
+  const { openAIInput } = await import('./llm.js');
+  const msgs = [{ role: 'user' as const, content: 'Conversation: hi' }];
+  assert.match(
+    openAIInput({ system: 'Return JSON', messages: msgs, json: true }).at(-1)!.content,
+    /JSON object/,
+  );
+  assert.equal(openAIInput({ system: 's', messages: msgs }).at(-1)!.content, 'Conversation: hi');
+  const hasIt = [{ role: 'user' as const, content: 'give me json' }];
+  assert.equal(
+    openAIInput({ system: 's', messages: hasIt, json: true })[0]!.content,
+    'give me json',
+  );
+});

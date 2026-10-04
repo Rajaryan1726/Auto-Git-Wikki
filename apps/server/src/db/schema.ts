@@ -83,6 +83,8 @@ export const users = pgTable('users', {
   }),
   // Null until the first successful repo sync; used to auto-sync on first login.
   reposSyncedAt: timestamp('repos_synced_at', { withTimezone: true }),
+  // User memory (Phase 4.5): when false, nothing is extracted or retrieved.
+  memoryEnabled: boolean('memory_enabled').notNull().default(true),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -283,6 +285,11 @@ export const chatMessages = pgTable(
     model: text('model'),
     /** Assistant only: indexed commit the sources point at (for GitHub links). */
     commitSha: text('commit_sha'),
+    /** Assistant only: ids of the user memories used to personalise the answer. */
+    memoryIds: jsonb('memory_ids')
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     createdAt: createdAt(),
   },
   (t) => [index('chat_messages_thread_created_idx').on(t.threadId, t.createdAt)],

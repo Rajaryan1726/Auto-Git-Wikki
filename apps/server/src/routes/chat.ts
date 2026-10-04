@@ -22,6 +22,13 @@ import {
   titleFromQuestion,
 } from '../services/chat.js';
 import { prepareAnswer, streamAnswer, HISTORY_TURNS } from '../services/rag.js';
+import { aboutUserSection } from '../services/memory-context.js';
+import { recallForQuestion } from '../services/memory.js';
+import { inngest } from '../inngest/client.js';
+import {
+  CHAT_TURN_COMPLETED_EVENT,
+  type ChatTurnCompletedData,
+} from '../inngest/functions/memory.js';
 import { getRepoForUser } from '../services/repos.js';
 
 const idSchema = z.uuid();
@@ -101,6 +108,10 @@ function send(res: Response, e: ChatStreamEvent): void {
  * Events: sources → token* → done | error. The user message is saved immediately; the
  * assistant message (text + sources + model) when the stream finishes, or with what was
  * generated so far if the client stops it.
+ *
+ * User memory: looked up in parallel with retrieval (hard timeout, never blocks the
+ * answer), added as an "About the user" system-prompt section, and the finished turn is
+ * sent to the background memory function (not for stopped or failed answers).
  */
 threadsRouter.post('/:id/ask', async (req, res) => {
   const { thread, repo: threadRepo } = await ownedThread(req);
@@ -138,13 +149,20 @@ threadsRouter.post('/:id/ask', async (req, res) => {
   let model: string | null = null;
   let sources: Awaited<ReturnType<typeof prepareAnswer>>['sources'] = [];
   let commitSha: string | null = null;
+  const userId = currentUser(req).id;
   try {
-    const prepared = await prepareAnswer({
-      repoId: thread.repoId,
-      repoFullName: threadRepo.fullName,
-      question,
-      history,
-    });
+    const [prepared, recall] = await Promise.all([
+      prepareAnswer({
+        repoId: thread.repoId,
+        repoFullName: threadRepo.fullName,
+        question,
+        history,
+      }),
+      recallForQuestion(userId, question),
+    ]);
+    const memoryIds = recall.memories.map((m) => m.id);
+    const aboutUser = aboutUserSection(recall.memories);
+    if (aboutUser) prepared.system = `${prepared.system}\n\n${aboutUser}`;
     sources = prepared.sources;
     commitSha = prepared.commitSha;
     send(res, {
@@ -179,14 +197,30 @@ threadsRouter.post('/:id/ask', async (req, res) => {
       sources,
       model,
       commitSha,
+      memoryIds,
     });
     console.log(
       `[chat] thread ${thread.id}: answered by ${model}` +
+        ` | memory: ${memoryIds.length} used, lookup ${recall.ms} ms` +
+        (recall.error ? ` (skipped: ${recall.error})` : '') +
         (failed.length ? ` (fallback after ${failed.join(', ')})` : '') +
         ` | query: ${prepared.rewritten ? `rewritten -> "${prepared.searchQuery}"` : 'as asked'}` +
         ` | ${sources.length} sources`,
     );
-    send(res, { event: 'done', data: { messageId: saved.id, model: model ?? 'unknown' } });
+    send(res, {
+      event: 'done',
+      data: { messageId: saved.id, model: model ?? 'unknown', memoryCount: memoryIds.length },
+    });
+    if (recall.enabled) {
+      // Fire and forget: learning about the user never delays or affects the answer.
+      const data: ChatTurnCompletedData = { userId, threadId: thread.id, messageId: saved.id };
+      inngest.send({ name: CHAT_TURN_COMPLETED_EVENT, data }).catch((err: unknown) => {
+        console.warn(
+          '[memory] could not enqueue the turn:',
+          err instanceof Error ? err.message : 'unknown error',
+        );
+      });
+    }
   } catch (err) {
     if (abort.signal.aborted) {
       // Client pressed stop: keep what was generated so far.

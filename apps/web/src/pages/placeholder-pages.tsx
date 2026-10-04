@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { HealthStatus } from '../components/health-status';
 import { PageHeader, Placeholder } from '../components/page-header';
+import { MemorySettings } from '../features/memory/memory-settings';
 
 export function OverviewPage() {
   return (
@@ -18,7 +19,7 @@ export function SettingsPage() {
   return (
     <>
       <PageHeader title="Settings" subtitle="Account and app preferences." />
-      <Placeholder>Settings will appear here.</Placeholder>
+      <MemorySettings />
     </>
   );
 }

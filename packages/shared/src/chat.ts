@@ -26,6 +26,8 @@ export const chatMessageSchema = z.object({
   model: z.string().nullable(),
   /** Assistant only: commit the sources point at. */
   commitSha: z.string().nullable(),
+  /** Assistant only: ids of the user memories used to personalise the answer. */
+  memoryIds: z.array(z.string()).default([]),
   createdAt: z.string(),
 });
 export type ChatMessage = z.infer<typeof chatMessageSchema>;

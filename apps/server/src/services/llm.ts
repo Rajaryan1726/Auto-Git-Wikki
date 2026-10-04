@@ -147,6 +147,19 @@ async function* streamGemini(
   if (usage) req.onUsage?.(usage, model);
 }
 
+/**
+ * OpenAI's json_object mode requires the word "json" in the input messages (the
+ * instructions don't count), so it is appended to the last user turn when missing.
+ */
+export function openAIInput(req: GenerateRequest): { role: string; content: string }[] {
+  const input = req.messages.map((m) => ({ role: m.role, content: m.content }));
+  if (req.json && !input.some((m) => /json/i.test(m.content))) {
+    const last = input.findLastIndex((m) => m.role === 'user');
+    if (last >= 0) input[last]!.content += '\n\nRespond with a JSON object.';
+  }
+  return input;
+}
+
 async function* streamOpenAI(
   model: string,
   req: GenerateRequest,
@@ -161,7 +174,7 @@ async function* streamOpenAI(
     body: JSON.stringify({
       model,
       instructions: req.system,
-      input: req.messages.map((m) => ({ role: m.role, content: m.content })),
+      input: openAIInput(req),
       stream: true,
       max_output_tokens: req.maxOutputTokens ?? 4096,
       ...(req.json ? { text: { format: { type: 'json_object' } } } : {}),

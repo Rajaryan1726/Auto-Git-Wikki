@@ -33,6 +33,11 @@ const envSchema = z.object({
 
   GEN_MODEL_PRIMARY: z.string().min(1),
   GEN_MODEL_FALLBACK: z.string().min(1),
+
+  // User memory (Phase 4.5): hard limit for the per-question lookup; on timeout the
+  // answer is generated without memory.
+  MEMORY_RECALL_TIMEOUT_MS: z.coerce.number().int().positive().max(5000).default(800),
+  MEMORY_RECALL_LIMIT: z.coerce.number().int().positive().max(20).default(5),
   EMBEDDING_MODEL: z.string().min(1),
   EMBEDDING_DIMS: z.coerce.number().int().min(128).max(3072),
 

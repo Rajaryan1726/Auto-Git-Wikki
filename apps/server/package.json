@@ -19,6 +19,7 @@
     "@vscode/tree-sitter-wasm": "^0.3.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
+    "custom-memory-engine": "github:Rajaryan1726/Custom-Memory-Engine#0bd0bf383073f59bbaab2e44a140e975cb6aca7b",
     "drizzle-orm": "^0.45.3",
     "express": "^5.2.1",
     "inngest": "^4.21.1",

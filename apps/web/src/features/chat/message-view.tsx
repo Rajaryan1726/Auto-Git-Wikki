@@ -1,7 +1,8 @@
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { CircleAlert, FileCode2, RotateCw } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { CircleAlert, FileCode2, RotateCw, UserRound } from 'lucide-react';
 import type { ChatSource } from '@autowiki/shared';
 import { buttonClass } from '../../lib/ui';
 import { sourceUrl } from './api';
@@ -120,11 +121,14 @@ export function AssistantMessage({
   text,
   link,
   model,
+  memoryCount = 0,
   streaming = false,
 }: {
   text: string;
   link: SourceLink;
   model?: string | null;
+  /** User memories used to personalise this answer. */
+  memoryCount?: number;
   streaming?: boolean;
 }) {
   return (
@@ -148,7 +152,21 @@ export function AssistantMessage({
         />
       )}
       <SourceChips link={link} />
-      {model && !streaming && <p className="mt-2 text-[11px] text-muted">Answered by {model}</p>}
+      {!streaming && (model || memoryCount > 0) && (
+        <p className="mt-2 flex flex-wrap items-center gap-x-2 text-[11px] text-muted">
+          {model && <span>Answered by {model}</span>}
+          {memoryCount > 0 && (
+            <Link
+              to="/settings#memory"
+              className="inline-flex items-center gap-1 hover:text-accent-text hover:underline"
+              title="See what AutoWiki remembers about you"
+            >
+              <UserRound size={11} aria-hidden />
+              Personalised using {memoryCount} {memoryCount === 1 ? 'memory' : 'memories'}
+            </Link>
+          )}
+        </p>
+      )}
     </div>
   );
 }

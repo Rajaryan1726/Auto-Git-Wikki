@@ -26,7 +26,8 @@
     "dev:search": "tsx apps/server/src/scripts/dev-search.ts",
     "eval:retrieval": "tsx apps/server/src/scripts/eval-retrieval.ts",
     "dev:ask": "tsx apps/server/src/scripts/dev-ask.ts",
-    "dev:wiki": "tsx apps/server/src/scripts/dev-wiki.ts"
+    "dev:wiki": "tsx apps/server/src/scripts/dev-wiki.ts",
+    "eval:memory": "tsx apps/server/src/scripts/eval-memory.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

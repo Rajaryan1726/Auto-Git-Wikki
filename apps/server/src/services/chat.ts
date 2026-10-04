@@ -33,6 +33,7 @@ export function serializeMessage(m: MessageRow): ChatMessage {
     })),
     model: m.model,
     commitSha: m.commitSha,
+    memoryIds: m.memoryIds,
     createdAt: m.createdAt.toISOString(),
   };
 }
@@ -96,6 +97,7 @@ export async function insertMessage(values: {
   sources?: ChatSource[];
   model?: string | null;
   commitSha?: string | null;
+  memoryIds?: string[];
 }) {
   const [row] = await db
     .insert(chatMessages)
@@ -106,6 +108,7 @@ export async function insertMessage(values: {
       sources: values.sources ?? [],
       model: values.model ?? null,
       commitSha: values.commitSha ?? null,
+      memoryIds: values.memoryIds ?? [],
     })
     .returning();
   await db

@@ -8,6 +8,7 @@ import { healthRouter } from './routes/health.js';
 import { indexJobsRouter, repoIndexRouter } from './routes/index-jobs.js';
 import { reposRouter } from './routes/repos.js';
 import { repoWikiRouter } from './routes/wiki.js';
+import { meRouter, memoriesRouter } from './routes/memories.js';
 import { inngestHandler } from './inngest/index.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 
@@ -27,6 +28,8 @@ export function createApp(): express.Express {
   app.use('/api/index-jobs', indexJobsRouter);
   app.use('/api/repos', repoThreadsRouter);
   app.use('/api/repos', repoWikiRouter);
+  app.use('/api/memories', memoriesRouter);
+  app.use('/api/me', meRouter);
   app.use('/api/threads', threadsRouter);
   app.use('/api/inngest', inngestHandler);
 

@@ -490,6 +490,7 @@ function Conversation({
                 text={m.content}
                 link={link(m.sources, m.commitSha)}
                 model={m.model}
+                memoryCount={m.memoryIds.length}
               />
             ),
           )
