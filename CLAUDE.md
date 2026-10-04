@@ -45,7 +45,15 @@ docker-compose.yml
 ```
 users
   id (uuid pk), github_id (bigint unique), username, avatar_url,
-  github_access_token_enc (text, AES-256-GCM encrypted), created_at, updated_at
+  github_access_token_enc (text, AES-256-GCM encrypted),
+  github_token_expires_at (timestamptz, nullable; null = token never expires),
+  github_refresh_token_enc (text, AES-256-GCM encrypted, nullable),
+  github_refresh_token_expires_at (timestamptz, nullable),
+  created_at, updated_at
+  -- Always get a token via getGithubToken(userId) / githubFetch() in
+  -- services/github-token.ts: it refreshes expired tokens and retries once on 401.
+  -- Refresh tokens are single-use: never refresh outside that service (it holds a
+  -- SELECT ... FOR UPDATE row lock and re-reads the token after acquiring it).
 
 repositories
   id (uuid pk), user_id (fk users), github_repo_id (bigint),

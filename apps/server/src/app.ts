@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { env } from './lib/env.js';
+import { authRouter } from './routes/auth.js';
 import { healthRouter } from './routes/health.js';
 import { inngestHandler } from './inngest/index.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
@@ -16,6 +17,7 @@ export function createApp(): express.Express {
   app.use(cookieParser());
 
   app.use('/api/health', healthRouter);
+  app.use('/api/auth', authRouter);
   app.use('/api/inngest', inngestHandler);
 
   app.use(notFoundHandler);

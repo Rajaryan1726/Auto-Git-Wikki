@@ -1,11 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { FolderGit2, LayoutDashboard, MessageSquare, Settings, UserRound } from 'lucide-react';
+import { FolderGit2, LayoutDashboard, MessageSquare, Settings } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
+import { UserMenu } from './user-menu';
 
 type NavItem = { to: string; label: string; icon: LucideIcon; end?: boolean };
 
-// "Overview" and "Repositories" both point at the dashboard until an overview page exists.
 const NAV: NavItem[] = [
   { to: '/overview', label: 'Overview', icon: LayoutDashboard },
   { to: '/', label: 'Repositories', icon: FolderGit2, end: true },
@@ -31,9 +31,6 @@ export function Sidebar() {
           </span>
           <span className="font-heading text-lg font-semibold">AutoWiki</span>
         </NavLink>
-        <div className="md:hidden">
-          <ThemeToggle />
-        </div>
       </div>
 
       <nav aria-label="Main">
@@ -49,18 +46,10 @@ export function Sidebar() {
         </ul>
       </nav>
 
-      <div className="mt-auto hidden items-center gap-3 border-t border-border pt-4 md:flex">
-        {/* User slot: replaced with the signed-in GitHub user once auth lands. */}
-        <NavLink
-          to="/login"
-          className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md px-2 text-sm text-muted hover:bg-soft hover:text-text"
-        >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-soft">
-            <UserRound size={16} aria-hidden />
-          </span>
-          <span className="truncate">Not signed in</span>
-        </NavLink>
-        <ThemeToggle />
+      <div className="flex flex-col gap-3 border-t border-border pt-4 md:mt-auto">
+        <ThemeToggle variant="full" />
+        <hr className="border-border" />
+        <UserMenu />
       </div>
     </aside>
   );

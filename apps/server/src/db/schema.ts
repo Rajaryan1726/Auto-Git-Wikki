@@ -31,6 +31,12 @@ export const users = pgTable('users', {
   username: text('username').notNull(),
   avatarUrl: text('avatar_url'),
   githubAccessTokenEnc: text('github_access_token_enc'),
+  // Set when the OAuth app issues expiring user tokens; null means the token never expires.
+  githubTokenExpiresAt: timestamp('github_token_expires_at', { withTimezone: true }),
+  githubRefreshTokenEnc: text('github_refresh_token_enc'),
+  githubRefreshTokenExpiresAt: timestamp('github_refresh_token_expires_at', {
+    withTimezone: true,
+  }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });

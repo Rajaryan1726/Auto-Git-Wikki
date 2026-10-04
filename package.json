@@ -20,7 +20,8 @@
     "db:migrate": "npm run db:migrate -w @autowiki/server",
     "infra:up": "docker compose up -d --wait",
     "infra:down": "docker compose down",
-    "inngest:dev": "npx --yes inngest-cli@latest dev -u http://localhost:4000/api/inngest"
+    "inngest:dev": "npx --yes inngest-cli@latest dev -u http://localhost:4000/api/inngest",
+    "test": "npm run test --workspaces --if-present"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

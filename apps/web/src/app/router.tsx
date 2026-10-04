@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { AppLayout } from '../components/app-layout';
+import { RedirectIfAuthed, RequireAuth } from '../features/auth/route-guards';
 import { LoginPage } from '../pages/login-page';
 import { RepositoriesPage } from '../pages/repositories-page';
 import {
@@ -11,16 +12,24 @@ import {
 } from '../pages/placeholder-pages';
 
 export const router = createBrowserRouter([
-  { path: '/login', element: <LoginPage /> },
   {
-    element: <AppLayout />,
+    element: <RedirectIfAuthed />,
+    children: [{ path: '/login', element: <LoginPage /> }],
+  },
+  {
+    element: <RequireAuth />,
     children: [
-      { path: '/', element: <RepositoriesPage /> },
-      { path: '/overview', element: <OverviewPage /> },
-      { path: '/repos/:id', element: <RepoPage /> },
-      { path: '/chat', element: <ChatPage /> },
-      { path: '/settings', element: <SettingsPage /> },
-      { path: '*', element: <NotFoundPage /> },
+      {
+        element: <AppLayout />,
+        children: [
+          { path: '/', element: <RepositoriesPage /> },
+          { path: '/overview', element: <OverviewPage /> },
+          { path: '/repos/:id', element: <RepoPage /> },
+          { path: '/chat', element: <ChatPage /> },
+          { path: '/settings', element: <SettingsPage /> },
+          { path: '*', element: <NotFoundPage /> },
+        ],
+      },
     ],
   },
 ]);
