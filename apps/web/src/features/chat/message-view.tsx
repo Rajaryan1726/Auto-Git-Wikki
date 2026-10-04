@@ -14,11 +14,23 @@ function citationHref(link: SourceLink, n: number): string | undefined {
   return s && link.commitSha ? sourceUrl(link.fullName, link.commitSha, s) : undefined;
 }
 
-/** Assistant answer: Markdown + highlighted code; [n] markers become small source links. */
-export function AnswerMarkdown({ text, link }: { text: string; link: SourceLink }) {
+/**
+ * Markdown with GFM and highlighted code, shared by chat answers and wiki pages.
+ * With `citations`, [n] markers become small source links (chat).
+ */
+export function MarkdownView({
+  text,
+  citations,
+  className = '',
+}: {
+  text: string;
+  citations?: SourceLink;
+  className?: string;
+}) {
+  const link = citations;
   const components: Components = {
     a({ href, children }) {
-      if (href?.startsWith(CITE_PREFIX)) {
+      if (link && href?.startsWith(CITE_PREFIX)) {
         const n = Number(href.slice(CITE_PREFIX.length));
         const s = link.sources.find((x) => x.n === n);
         const url = citationHref(link, n);
@@ -46,9 +58,9 @@ export function AnswerMarkdown({ text, link }: { text: string; link: SourceLink 
     },
   };
   return (
-    <div className="chat-markdown">
+    <div className={`chat-markdown ${className}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkCitations]}
+        remarkPlugins={link ? [remarkGfm, remarkCitations] : [remarkGfm]}
         rehypePlugins={[[rehypeHighlight, { detect: false, ignoreMissing: true }]]}
         components={components}
       >
@@ -56,6 +68,11 @@ export function AnswerMarkdown({ text, link }: { text: string; link: SourceLink 
       </ReactMarkdown>
     </div>
   );
+}
+
+/** Assistant answer: Markdown + highlighted code; [n] markers become small source links. */
+export function AnswerMarkdown({ text, link }: { text: string; link: SourceLink }) {
+  return <MarkdownView text={text} citations={link} />;
 }
 
 /** "Sources" row: one chip per source, linking to the lines at the indexed commit. */

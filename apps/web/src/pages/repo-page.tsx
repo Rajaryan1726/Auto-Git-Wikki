@@ -37,6 +37,7 @@ import { repoUpdatedAt } from '../features/repos/format';
 import { ApiRequestError } from '../lib/api';
 import { relativeTime } from '../lib/time';
 import { buttonClass } from '../lib/ui';
+import { WikiPanel } from '../features/wiki/wiki-panel';
 
 /** Everything the page needs to know about indexing, derived from repo + latest job. */
 type IndexView = {
@@ -276,29 +277,6 @@ function EmptyPanel({ icon: Icon, children }: { icon: typeof BookOpen; children:
   );
 }
 
-function WikiPanel({ view }: { view: IndexView }) {
-  if (view.active && !view.hasIndex) {
-    return (
-      <EmptyPanel icon={BookOpen}>The wiki will appear here after indexing finishes.</EmptyPanel>
-    );
-  }
-  if (!view.hasIndex) {
-    return (
-      <EmptyPanel icon={BookOpen}>
-        <p>No wiki yet. Index this repository to generate its wiki.</p>
-        {!view.failed && (
-          <div className="mt-4">
-            <IndexButton view={view} label="Index repository" />
-          </div>
-        )}
-      </EmptyPanel>
-    );
-  }
-  return (
-    <EmptyPanel icon={BookOpen}>The wiki for this index has not been generated yet.</EmptyPanel>
-  );
-}
-
 function HistoryPanel({ repo }: { repo: RepoSummary }) {
   const jobs = useRepoIndexJobs(repo.id);
   if (jobs.isPending) {
@@ -371,22 +349,18 @@ function HistoryPanel({ repo }: { repo: RepoSummary }) {
 }
 
 function RepoTabs({ repo, view }: { repo: RepoSummary; view: IndexView }) {
-  const [params, setParams] = useSearchParams();
+  const [params] = useSearchParams();
+  const { slug } = useParams<{ slug?: string }>();
+  const navigate = useNavigate();
   const active: TabId = TABS.some((t) => t.id === params.get('tab'))
     ? (params.get('tab') as TabId)
     : 'wiki';
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const select = (id: TabId, focus = false) => {
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (id === 'wiki') next.delete('tab');
-        else next.set('tab', id);
-        return next;
-      },
-      { replace: true },
-    );
+    // Wiki keeps its page (deep link /repos/:id/wiki/:slug); other tabs use ?tab=.
+    const base = id === 'wiki' && slug ? `/repos/${repo.id}/wiki/${slug}` : `/repos/${repo.id}`;
+    navigate(id === 'wiki' ? base : `${base}?tab=${id}`, { replace: true });
     if (focus) tabRefs.current[id]?.focus();
   };
 
@@ -447,7 +421,7 @@ function RepoTabs({ repo, view }: { repo: RepoSummary; view: IndexView }) {
         tabIndex={0}
         className="mt-4"
       >
-        {active === 'wiki' && <WikiPanel view={view} />}
+        {active === 'wiki' && <WikiPanel repo={repo} view={view} slug={slug} />}
         {active === 'files' && (
           <EmptyPanel icon={FileCode2}>
             Indexed files will be listed here after the first index.

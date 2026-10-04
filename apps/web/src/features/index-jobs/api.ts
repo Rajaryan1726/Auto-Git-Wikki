@@ -8,6 +8,7 @@ import {
 } from '@autowiki/shared';
 import { apiFetch } from '../../lib/api';
 import { reposKeys } from '../repos/api';
+import { wikiKeys } from '../wiki/api';
 
 /** Poll interval while a job is queued or running. */
 export const ACTIVE_POLL_MS = 2500;
@@ -65,6 +66,8 @@ function invalidateIndexing(queryClient: ReturnType<typeof useQueryClient>) {
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: reposKeys.all }),
     queryClient.invalidateQueries({ queryKey: indexJobKeys.all }),
+    // A finished index also brings a new wiki.
+    queryClient.invalidateQueries({ queryKey: wikiKeys.all }),
   ]);
 }
 

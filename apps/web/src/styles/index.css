@@ -113,6 +113,24 @@
   .chat-markdown > * + * {
     margin-top: 0.75rem;
   }
+  /* Wiki pages: same renderer as chat, roomier article typography. */
+  .wiki-article.chat-markdown {
+    @apply text-[15px] leading-7;
+  }
+  .wiki-article.chat-markdown h2 {
+    @apply border-b border-border pb-1 text-xl;
+    margin-top: 2rem;
+  }
+  .wiki-article.chat-markdown h3 {
+    @apply text-base;
+    margin-top: 1.5rem;
+  }
+  .wiki-article.chat-markdown pre {
+    @apply text-[13px];
+  }
+  .wiki-article.chat-markdown table {
+    @apply text-sm;
+  }
   .chat-markdown h1,
   .chat-markdown h2,
   .chat-markdown h3,

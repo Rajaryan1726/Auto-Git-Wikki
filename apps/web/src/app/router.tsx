@@ -21,6 +21,7 @@ export const router = createBrowserRouter([
           { path: '/', element: <RepositoriesPage /> },
           { path: '/overview', element: <OverviewPage /> },
           { path: '/repos/:id', element: <RepoPage /> },
+          { path: '/repos/:id/wiki/:slug', element: <RepoPage /> },
           { path: '/chat', element: <ChatPage /> },
           { path: '/settings', element: <SettingsPage /> },
           { path: '*', element: <NotFoundPage /> },
