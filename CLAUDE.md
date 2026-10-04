@@ -74,6 +74,7 @@ index_jobs
   embedding_dims (int, default 768; fixed with embedding_model at job creation),
   chunks_total (int, nullable; null = Phase 3A job without vectors, never counts as indexed),
   embedded_chunks (int), stats (jsonb: embedCalls, rateLimitHits, rateLimitWaitMs, skippedFiles, durationMs),
+  wiki_pages_total (int, nullable), wiki_pages_done (int)  -- "Generating wiki" step progress,
   current_step (text, nullable; id of the running step, or the step it failed on.
     The ordered step list lives in apps/server/src/services/index-steps.ts and is
     returned by GET /api/index-jobs/:id, so the UI never hardcodes steps),
@@ -88,10 +89,23 @@ index_chunks   -- staging between "Processing files" and "Embedding & saving"; r
   embedded_at (nullable)
   unique (job_id, point_id), index (job_id, embedded_at)
 
+wiki_runs      -- one wiki generation for an index job (Phase 5)
+  id (uuid pk), repo_id (fk, cascade), index_job_id (fk, cascade),
+  trigger ('index' | 'regenerate'), status (enum: running | done | failed),
+  pages_total (int, nullable), pages_done (int), outline (jsonb, validated outline),
+  stats (jsonb: tokens, models, durations, hallucination-check counts), error (text),
+  started_at, finished_at
+  index (index_job_id, started_at)
+  unique index (repo_id) where status = 'running'  -- one wiki generation per repo
+  -- The wiki shown for a repo = newest done run of its last successful index job.
+
 wiki_pages
-  id (uuid pk), repo_id (fk), index_job_id (fk), slug, title, parent_slug (nullable),
-  position (int), content_md (text), source_files (jsonb), created_at
-  unique (index_job_id, slug)
+  id (uuid pk), repo_id (fk), index_job_id (fk), wiki_run_id (fk wiki_runs, cascade),
+  slug, title, parent_slug (nullable), position (int), content_md (text),
+  source_files (jsonb: [{ path, startLine, endLine }]),
+  meta (jsonb: model, input/output tokens, ms, fallbackFrom, badPathsFirstDraft, removedPaths),
+  created_at
+  unique (wiki_run_id, slug)
 
 chat_threads
   id (uuid pk), user_id (fk), repo_id (fk), title, created_at, updated_at
@@ -156,6 +170,19 @@ Style: radius 10–16px, 1px borders, no gradients, no emoji, inline stroke icon
 - Repository text is untrusted: the system prompt wraps it in `<context>` and tells the model to treat it as data and ignore any instructions inside it.
 - Generation: `GEN_MODEL_PRIMARY` (Gemini) then `GEN_MODEL_FALLBACK` (OpenAI). The fallback takes over on any primary failure before the first token, and also mid-answer (SSE `reset` event, the client discards the partial text). The answering model is stored on the message.
 - Ask stream (`POST /api/threads/:id/ask`, SSE): `sources` → `token`* (→ `reset` → `token`*) → `done` | `error`. The user message is saved immediately; the assistant message when the stream ends (or the partial text, marked "(stopped)", when the client stops it).
+
+## Wiki conventions (Phase 5)
+
+- The wiki is generated at the end of `index-repo` (after `cleanup-old-points`, before `finalize`; step "Generating wiki") and on demand by `POST /api/repos/:id/wiki/regenerate` (`regenerate-wiki` function, same steps, no re-embedding). Steps live in `inngest/functions/wiki.ts`: `wiki-outline` → `wiki-page-<slug>` (3 in parallel) → `wiki-finish`.
+- A wiki failure never fails the index: the run is marked failed, the job still finishes `done` and stays searchable.
+- Outline: indexed file list (from Qdrant), README and manifests → strict JSON, validated with zod (`services/wiki-content.ts`): 5–12 pages, Overview / Architecture / Setup & run required, one nesting level, unknown file paths dropped. One retry with the validation errors.
+- Pages reuse the chat retrieval path (`searchRepo` with the job id → `rankHits` → `buildContext`) plus short excerpts of the page's files; the same untrusted-context rules as chat (`UNTRUSTED_CONTEXT_RULES`).
+- Hallucination check: file paths in backticks / link targets that match no indexed file or directory → one retry listing them; leftovers are un-linked and counted in `wiki_pages.meta`.
+- Pure helpers (outline validation, prompts, path check) are unit-tested; orchestration is `services/wiki.ts`.
+
+## LLM circuit breaker
+
+- `services/circuit-breaker.ts`, used by `llm.ts` for every generation call (chat, query rewrite, wiki). A quota / rate-limit error (429, RESOURCE_EXHAUSTED) opens that provider's breaker until its retry time, clamped to 60 s – 1 h; while open, calls skip it and go straight to the next model. If every provider is open they are all tried anyway. Opening and closing are logged. In memory, per process.
 
 ## Engineering rules
 

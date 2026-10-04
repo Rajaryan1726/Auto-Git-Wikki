@@ -151,7 +151,7 @@ function TocList({
       <Link
         to={wikiPath(repoId, p.slug)}
         aria-current={selected ? 'page' : undefined}
-        className={`flex min-h-10 items-center rounded-md px-3 py-1.5 text-sm transition-colors ${
+        className={`flex min-h-11 items-center rounded-md px-3 py-1.5 text-sm transition-colors ${
           nested ? 'pl-6' : ''
         } ${
           selected
