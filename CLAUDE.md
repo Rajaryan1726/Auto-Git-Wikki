@@ -49,6 +49,7 @@ users
   github_token_expires_at (timestamptz, nullable; null = token never expires),
   github_refresh_token_enc (text, AES-256-GCM encrypted, nullable),
   github_refresh_token_expires_at (timestamptz, nullable),
+  repos_synced_at (timestamptz, nullable; null = never synced -> auto-sync on first dashboard load),
   created_at, updated_at
   -- Always get a token via getGithubToken(userId) / githubFetch() in
   -- services/github-token.ts: it refreshes expired tokens and retries once on 401.
@@ -58,14 +59,20 @@ users
 repositories
   id (uuid pk), user_id (fk users), github_repo_id (bigint),
   full_name, name, description, is_private (bool), default_branch,
-  language, github_updated_at, last_indexed_job_id (fk index_jobs, nullable),
+  language, github_updated_at,
+  github_pushed_at (timestamptz, nullable; GitHub pushed_at = last push to any branch.
+    Use it for "updated X ago" and stale-wiki detection; updated_at also changes on
+    stars and settings edits),
+  last_indexed_job_id (fk index_jobs, nullable),
   created_at, updated_at
   unique (user_id, github_repo_id)
+  -- Sync deletes repos missing from GitHub ONLY after a complete, non-partial fetch.
 
 index_jobs
   id (uuid pk), repo_id (fk repositories), status (enum: queued | running | done | failed),
   commit_sha, embedding_model, files_total (int), files_done (int),
   error (text), started_at, finished_at, created_at
+  index (repo_id, created_at)
 
 wiki_pages
   id (uuid pk), repo_id (fk), index_job_id (fk), slug, title, parent_slug (nullable),

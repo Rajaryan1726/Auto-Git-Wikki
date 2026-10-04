@@ -1,4 +1,5 @@
-import { Link, useParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useRepo } from '../features/repos/api';
 import { HealthStatus } from '../components/health-status';
 import { PageHeader, Placeholder } from '../components/page-header';
 
@@ -14,28 +15,17 @@ export function OverviewPage() {
   );
 }
 
-export function RepoPage() {
-  const { id } = useParams<{ id: string }>();
-  return (
-    <>
-      <nav aria-label="Breadcrumb" className="mb-4 text-sm text-muted">
-        <Link to="/" className="text-accent-text hover:underline">
-          Repositories
-        </Link>{' '}
-        / <span className="font-mono">{id}</span>
-      </nav>
-      <PageHeader title="Repository" subtitle="Wiki, files and index history." />
-      <Placeholder>
-        Repository <span className="font-mono text-text">{id}</span> will show its wiki here.
-      </Placeholder>
-    </>
-  );
-}
-
 export function ChatPage() {
+  const [params] = useSearchParams();
+  const repo = useRepo(params.get('repo') ?? undefined);
   return (
     <>
       <PageHeader title="Chat" subtitle="Ask questions about an indexed repository." />
+      {repo.data && (
+        <p className="mb-4 inline-flex rounded-full border border-border bg-raised px-3 py-1 font-mono text-sm">
+          {repo.data.fullName}
+        </p>
+      )}
       <Placeholder>Chat threads will appear here.</Placeholder>
     </>
   );

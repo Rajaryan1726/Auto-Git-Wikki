@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { AuthUser } from '@autowiki/shared';
+import type { AuthUser, LoginErrorCode } from '@autowiki/shared';
 
 export const ME_QUERY_KEY = ['auth', 'me'] as const;
 
@@ -8,6 +8,8 @@ export type AuthContextValue = {
   isLoading: boolean;
   /** Network or server failure (not a 401). */
   error: Error | null;
+  /** Why the session ended (shown on /login); null for a normal sign-out. */
+  endReason: LoginErrorCode | null;
   signInUrl: string;
   signOut: () => Promise<void>;
   isSigningOut: boolean;

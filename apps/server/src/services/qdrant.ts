@@ -37,6 +37,14 @@ export async function ensureCodeCollection(): Promise<void> {
   }
 }
 
+/** Removes every vector belonging to a repo (all commits). */
+export async function deleteRepoPoints(repoId: string): Promise<void> {
+  await qdrant.delete(codeCollectionName, {
+    wait: false,
+    filter: { must: [{ key: 'repo_id', match: { value: repoId } }] },
+  });
+}
+
 export async function pingQdrant(): Promise<void> {
   await qdrant.getCollections();
 }

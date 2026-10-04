@@ -9,7 +9,7 @@ const ERROR_MESSAGES: Record<LoginErrorCode, string> = {
   invalid_state: 'Your sign-in link expired or was invalid. Please try again.',
   oauth_failed: 'GitHub sign-in failed. Please try again.',
   not_configured: 'GitHub sign-in is not configured on the server.',
-  session_expired: 'Your session expired. Please sign in again.',
+  session_expired: 'Your session expired or GitHub access was revoked. Sign in again to continue.',
 };
 
 function errorMessage(code: string | null): string | null {

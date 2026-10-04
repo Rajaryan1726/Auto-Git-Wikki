@@ -33,6 +33,15 @@ export async function upsertGithubUser(
   return row;
 }
 
+export async function getReposSyncedAt(userId: string): Promise<Date | null> {
+  const [row] = await db
+    .select({ reposSyncedAt: users.reposSyncedAt })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row?.reposSyncedAt ?? null;
+}
+
 export async function findAuthUserById(id: string): Promise<AuthUser | null> {
   const [row] = await db
     .select({ id: users.id, username: users.username, avatarUrl: users.avatarUrl })

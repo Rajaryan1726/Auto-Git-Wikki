@@ -23,11 +23,14 @@ function AuthUnavailable({ message }: { message: string }) {
 
 /** Renders child routes only for signed-in users; otherwise redirects to /login. */
 export function RequireAuth() {
-  const { user, isLoading, error } = useAuth();
+  const { user, isLoading, error, endReason } = useAuth();
   const location = useLocation();
   if (isLoading) return <FullPageSpinner />;
   if (!user && error) return <AuthUnavailable message={error.message} />;
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!user) {
+    const to = endReason ? `/login?error=${endReason}` : '/login';
+    return <Navigate to={to} replace state={{ from: location.pathname }} />;
+  }
   return <Outlet />;
 }
 

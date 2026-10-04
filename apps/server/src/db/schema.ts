@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
+  index,
   integer,
   jsonb,
   pgEnum,
@@ -37,6 +38,8 @@ export const users = pgTable('users', {
   githubRefreshTokenExpiresAt: timestamp('github_refresh_token_expires_at', {
     withTimezone: true,
   }),
+  // Null until the first successful repo sync; used to auto-sync on first login.
+  reposSyncedAt: timestamp('repos_synced_at', { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -56,6 +59,8 @@ export const repositories = pgTable(
     defaultBranch: text('default_branch'),
     language: text('language'),
     githubUpdatedAt: timestamp('github_updated_at', { withTimezone: true }),
+    // Last push to any branch; unlike updated_at it ignores stars and settings edits.
+    githubPushedAt: timestamp('github_pushed_at', { withTimezone: true }),
     lastIndexedJobId: uuid('last_indexed_job_id').references((): AnyPgColumn => indexJobs.id, {
       onDelete: 'set null',
     }),
@@ -65,21 +70,25 @@ export const repositories = pgTable(
   (t) => [unique('repositories_user_github_repo_uq').on(t.userId, t.githubRepoId)],
 );
 
-export const indexJobs = pgTable('index_jobs', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  repoId: uuid('repo_id')
-    .notNull()
-    .references((): AnyPgColumn => repositories.id, { onDelete: 'cascade' }),
-  status: indexJobStatus('status').notNull().default('queued'),
-  commitSha: text('commit_sha'),
-  embeddingModel: text('embedding_model').notNull(),
-  filesTotal: integer('files_total').notNull().default(0),
-  filesDone: integer('files_done').notNull().default(0),
-  error: text('error'),
-  startedAt: timestamp('started_at', { withTimezone: true }),
-  finishedAt: timestamp('finished_at', { withTimezone: true }),
-  createdAt: createdAt(),
-});
+export const indexJobs = pgTable(
+  'index_jobs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    repoId: uuid('repo_id')
+      .notNull()
+      .references((): AnyPgColumn => repositories.id, { onDelete: 'cascade' }),
+    status: indexJobStatus('status').notNull().default('queued'),
+    commitSha: text('commit_sha'),
+    embeddingModel: text('embedding_model').notNull(),
+    filesTotal: integer('files_total').notNull().default(0),
+    filesDone: integer('files_done').notNull().default(0),
+    error: text('error'),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('index_jobs_repo_created_idx').on(t.repoId, t.createdAt)],
+);
 
 export const wikiPages = pgTable(
   'wiki_pages',

@@ -15,6 +15,13 @@
       "when": 1791105136305,
       "tag": "0001_github_refresh_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791106460809,
+      "tag": "0002_repo_sync",
+      "breakpoints": true
     }
   ]
 }
