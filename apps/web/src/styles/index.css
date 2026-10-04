@@ -1,0 +1,105 @@
+@import 'tailwindcss';
+
+/* Dark variant follows the data-theme attribute set by the theme provider. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* ---- Theme A: "Wine & cream" ---- */
+:root {
+  --bg: #f4ecdd;
+  --surface: #fbf7ef;
+  --raised: #ffffff;
+  --soft: #e8dcc6;
+  --border: #dccfbb;
+  --text: #2a1f1c;
+  --muted: #6b5d52;
+  --accent: #722f37;
+  --accent-text: #722f37;
+  --on-accent: #fbf7ef;
+  --accent-soft: #f0e2de;
+  --success: #2f5e3c;
+  --success-soft: #e1ebdc;
+  --warning: #7a4f0e;
+  --warning-soft: #f3e5c8;
+  --danger: #b42318;
+  --danger-soft: #fbe3e0;
+  --code-bg: #efe5d3;
+}
+
+[data-theme='dark'] {
+  --bg: #171213;
+  --surface: #1f1819;
+  --raised: #272021;
+  --soft: #2f2627;
+  --border: #3a2f30;
+  --text: #ede3d2;
+  --muted: #b7a89a;
+  --accent: #722f37;
+  --accent-text: #e2a3aa;
+  --on-accent: #f4ecdd;
+  --accent-soft: #3a2226;
+  --success: #9cc5a4;
+  --success-soft: #22302a;
+  --warning: #e3b76a;
+  --warning-soft: #3a2e1a;
+  --danger: #f97066;
+  --danger-soft: #3a1a17;
+  --code-bg: #120e0f;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-soft: var(--soft);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-text: var(--accent-text);
+  --color-on-accent: var(--on-accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-code-bg: var(--code-bg);
+
+  --font-heading: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: 10px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+}
+
+@layer base {
+  html {
+    background-color: var(--bg);
+  }
+
+  body {
+    @apply bg-bg text-text font-sans antialiased;
+    min-height: 100vh;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-heading;
+  }
+
+  code,
+  pre,
+  kbd {
+    @apply font-mono;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
+  }
+}
