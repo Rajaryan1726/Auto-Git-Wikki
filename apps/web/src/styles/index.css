@@ -103,3 +103,89 @@
     outline-offset: 2px;
   }
 }
+
+/* ---- Chat answers (Markdown) ---- */
+@layer components {
+  .chat-markdown {
+    @apply text-sm leading-relaxed text-text;
+    overflow-wrap: anywhere;
+  }
+  .chat-markdown > * + * {
+    margin-top: 0.75rem;
+  }
+  .chat-markdown h1,
+  .chat-markdown h2,
+  .chat-markdown h3,
+  .chat-markdown h4 {
+    @apply font-heading font-semibold;
+    margin-top: 1.1rem;
+  }
+  .chat-markdown h1 {
+    @apply text-lg;
+  }
+  .chat-markdown h2,
+  .chat-markdown h3 {
+    @apply text-base;
+  }
+  .chat-markdown ul,
+  .chat-markdown ol {
+    padding-left: 1.25rem;
+  }
+  .chat-markdown ul {
+    list-style: disc;
+  }
+  .chat-markdown ol {
+    list-style: decimal;
+  }
+  .chat-markdown li + li {
+    margin-top: 0.25rem;
+  }
+  .chat-markdown a {
+    @apply text-accent-text underline underline-offset-2;
+  }
+  .chat-markdown blockquote {
+    @apply border-l-2 border-border pl-3 text-muted;
+  }
+  .chat-markdown :not(pre) > code {
+    @apply rounded bg-code-bg px-1 py-0.5 font-mono text-[0.85em];
+  }
+  .chat-markdown pre {
+    @apply overflow-x-auto rounded-md border border-border bg-code-bg p-3 font-mono text-xs leading-relaxed;
+  }
+  .chat-markdown table {
+    @apply block overflow-x-auto text-xs;
+    border-collapse: collapse;
+  }
+  .chat-markdown th,
+  .chat-markdown td {
+    @apply border border-border px-2 py-1;
+  }
+
+  /* highlight.js tokens, from the theme palette so light and dark both work */
+  .chat-markdown .hljs-comment,
+  .chat-markdown .hljs-quote {
+    @apply text-muted italic;
+  }
+  .chat-markdown .hljs-keyword,
+  .chat-markdown .hljs-selector-tag,
+  .chat-markdown .hljs-built_in,
+  .chat-markdown .hljs-type {
+    @apply text-accent-text;
+  }
+  .chat-markdown .hljs-string,
+  .chat-markdown .hljs-regexp,
+  .chat-markdown .hljs-template-string {
+    @apply text-success;
+  }
+  .chat-markdown .hljs-number,
+  .chat-markdown .hljs-literal,
+  .chat-markdown .hljs-attr,
+  .chat-markdown .hljs-variable {
+    @apply text-warning;
+  }
+  .chat-markdown .hljs-title,
+  .chat-markdown .hljs-function,
+  .chat-markdown .hljs-section {
+    @apply font-semibold;
+  }
+}

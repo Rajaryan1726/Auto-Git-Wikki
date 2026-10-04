@@ -170,29 +170,41 @@ export const wikiPages = pgTable(
   (t) => [unique('wiki_pages_job_slug_uq').on(t.indexJobId, t.slug)],
 );
 
-export const chatThreads = pgTable('chat_threads', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  repoId: uuid('repo_id')
-    .notNull()
-    .references(() => repositories.id, { onDelete: 'cascade' }),
-  title: text('title').notNull(),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
-});
+export const chatThreads = pgTable(
+  'chat_threads',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    repoId: uuid('repo_id')
+      .notNull()
+      .references(() => repositories.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('chat_threads_user_repo_updated_idx').on(t.userId, t.repoId, t.updatedAt)],
+);
 
-export const chatMessages = pgTable('chat_messages', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  threadId: uuid('thread_id')
-    .notNull()
-    .references(() => chatThreads.id, { onDelete: 'cascade' }),
-  role: chatRole('role').notNull(),
-  content: text('content').notNull(),
-  sources: jsonb('sources')
-    .$type<SourceRef[]>()
-    .notNull()
-    .default(sql`'[]'::jsonb`),
-  createdAt: createdAt(),
-});
+export const chatMessages = pgTable(
+  'chat_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    threadId: uuid('thread_id')
+      .notNull()
+      .references(() => chatThreads.id, { onDelete: 'cascade' }),
+    role: chatRole('role').notNull(),
+    content: text('content').notNull(),
+    sources: jsonb('sources')
+      .$type<SourceRef[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    /** Assistant only: generation model that answered (e.g. gemini-3.8-flash). */
+    model: text('model'),
+    /** Assistant only: indexed commit the sources point at (for GitHub links). */
+    commitSha: text('commit_sha'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('chat_messages_thread_created_idx').on(t.threadId, t.createdAt)],
+);

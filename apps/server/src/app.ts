@@ -3,6 +3,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { env } from './lib/env.js';
 import { authRouter } from './routes/auth.js';
+import { repoThreadsRouter, threadsRouter } from './routes/chat.js';
 import { healthRouter } from './routes/health.js';
 import { indexJobsRouter, repoIndexRouter } from './routes/index-jobs.js';
 import { reposRouter } from './routes/repos.js';
@@ -23,6 +24,8 @@ export function createApp(): express.Express {
   app.use('/api/repos', repoIndexRouter);
   app.use('/api/repos', reposRouter);
   app.use('/api/index-jobs', indexJobsRouter);
+  app.use('/api/repos', repoThreadsRouter);
+  app.use('/api/threads', threadsRouter);
   app.use('/api/inngest', inngestHandler);
 
   app.use(notFoundHandler);

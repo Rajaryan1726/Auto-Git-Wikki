@@ -1,0 +1,73 @@
+{
+  "description": "Retrieval eval: each query must return one of the expected files. Paths are repo-relative. hit@3 = an expected file is in the top 3; MRR uses the rank of the first expected file within the top 10.",
+  "cases": [
+    {
+      "repo": "Rajaryan1726/Auto-Git-Wikki",
+      "query": "where is the GitHub OAuth callback handled and the state verified?",
+      "expected": ["apps/server/src/routes/auth.ts"]
+    },
+    {
+      "repo": "Rajaryan1726/Auto-Git-Wikki",
+      "query": "how are GitHub access tokens encrypted before saving?",
+      "expected": ["apps/server/src/lib/crypto.ts", "apps/server/src/services/users.ts"]
+    },
+    {
+      "repo": "Rajaryan1726/Auto-Git-Wikki",
+      "query": "how does the chunker split code into functions and classes?",
+      "expected": ["apps/server/src/indexing/chunker.ts"]
+    },
+    {
+      "repo": "Rajaryan1726/Auto-Git-Wikki",
+      "query": "where is the GitHub OAuth callback handled",
+      "expected": ["apps/server/src/routes/auth.ts"]
+    },
+    {
+      "repo": "Rajaryan1726/NLP_PROJECT",
+      "query": "how is a claim verified and given a verdict?",
+      "expected": ["backend/verifier.py"]
+    },
+    {
+      "repo": "Rajaryan1726/NLP_PROJECT",
+      "query": "where are the FastAPI endpoints defined?",
+      "expected": ["backend/main.py"]
+    },
+    {
+      "repo": "Rajaryan1726/NLP_PROJECT",
+      "query": "how are retrieved passages reranked?",
+      "expected": ["backend/reranker.py"]
+    },
+    {
+      "repo": "Rajaryan1726/Custom-Memory-Engine",
+      "query": "how does the engine decide whether to add, update or delete a memory?",
+      "expected": ["src/memory/decider.js"]
+    },
+    {
+      "repo": "Rajaryan1726/Custom-Memory-Engine",
+      "query": "how are facts extracted from a conversation?",
+      "expected": ["src/memory/extractor.js"]
+    },
+    {
+      "repo": "Rajaryan1726/Custom-Memory-Engine",
+      "query": "how are embeddings created for memories?",
+      "expected": ["src/llm/embed.js"]
+    },
+    {
+      "repo": "Rajaryan1726/Advanced-RAG",
+      "query": "how are documents split into chunks before embedding?",
+      "expected": ["backend/src/chunking/text-chunker.js"]
+    },
+    {
+      "repo": "Rajaryan1726/Advanced-RAG",
+      "query": "how does the retriever rerank search results?",
+      "expected": ["backend/src/retrieval/rerank.js"]
+    },
+    {
+      "repo": "Rajaryan1726/Advanced-RAG",
+      "query": "how is a YouTube video ingested?",
+      "expected": [
+        "backend/src/ingestion/youtube-loader.js",
+        "backend/src/queue/workers/ingestion-worker.js"
+      ]
+    }
+  ]
+}
