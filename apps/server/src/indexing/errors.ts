@@ -1,5 +1,6 @@
 import { HttpError } from '../lib/http-error.js';
 import { GithubRateLimitError } from '../services/github-api.js';
+import { EmbeddingFatalError, EmbeddingRateLimitError } from '../services/embedding-errors.js';
 import { RepoAccessLostError, RepoEmptyError } from '../services/github-index.js';
 
 export type IndexErrorDecision =
@@ -26,6 +27,10 @@ export function classifyIndexError(err: unknown, now = Date.now()): IndexErrorDe
     };
   }
   if (err instanceof RepoEmptyError) return { action: 'fail', message: err.message };
+  if (err instanceof EmbeddingFatalError) return { action: 'fail', message: err.message };
+  if (err instanceof EmbeddingRateLimitError) {
+    return { action: 'retry_at', retryAt: err.retryAt, message: err.message };
+  }
   if (err instanceof GithubRateLimitError) {
     if (err.retryAt.getTime() - now > MAX_RATE_LIMIT_WAIT_MS) {
       return { action: 'fail', message: err.message };

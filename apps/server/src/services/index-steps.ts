@@ -2,15 +2,16 @@ import type { IndexJobStatus, IndexJobStep } from '@autowiki/shared';
 
 /**
  * The ordered indexing pipeline shown in the UI. The server is the source of truth so
- * later phases can insert steps (3B: embedding & saving, 5: generating wiki) without
+ * later phases can insert steps (Phase 5: generating wiki) without
  * touching the frontend. `weight` is the share of overall progress each step covers.
  */
 export const INDEX_STEPS = [
   { id: 'queued', label: 'Queued', weight: 0 },
-  { id: 'resolve_commit', label: 'Resolving latest commit', weight: 3 },
-  { id: 'list_files', label: 'Listing & filtering files', weight: 4 },
-  { id: 'process_files', label: 'Processing files', weight: 90 },
-  { id: 'finalize', label: 'Finishing', weight: 3 },
+  { id: 'resolve_commit', label: 'Resolving latest commit', weight: 2 },
+  { id: 'list_files', label: 'Listing & filtering files', weight: 3 },
+  { id: 'process_files', label: 'Processing files', weight: 30 },
+  { id: 'embed', label: 'Embedding & saving', weight: 60 },
+  { id: 'finalize', label: 'Finishing', weight: 5 },
 ] as const;
 
 export type IndexStepId = (typeof INDEX_STEPS)[number]['id'];
@@ -20,6 +21,8 @@ export type StepJobFields = {
   currentStep: string | null;
   filesTotal: number;
   filesDone: number;
+  chunksTotal: number | null;
+  embeddedChunks: number;
 };
 
 function stepIndex(job: StepJobFields): number {
@@ -29,6 +32,10 @@ function stepIndex(job: StepJobFields): number {
 
 function filesFraction(job: StepJobFields): number {
   return job.filesTotal > 0 ? Math.min(1, job.filesDone / job.filesTotal) : 0;
+}
+
+function embedFraction(job: StepJobFields): number {
+  return job.chunksTotal ? Math.min(1, job.embeddedChunks / job.chunksTotal) : 0;
 }
 
 export function stepLabel(id: string | null): string | null {
@@ -46,6 +53,7 @@ export function jobProgress(job: StepJobFields): number {
   });
   const step = INDEX_STEPS[current]!;
   if (step.id === 'process_files') done += step.weight * filesFraction(job);
+  if (step.id === 'embed') done += step.weight * embedFraction(job);
   return Math.min(99, Math.round((done / total) * 100));
 }
 
@@ -59,10 +67,14 @@ export function describeSteps(job: StepJobFields): IndexJobStep[] {
     else if (i > current) state = 'pending';
     else state = job.status === 'failed' ? 'failed' : 'current';
 
-    const detail =
-      s.id === 'process_files' && job.filesTotal > 0 && state !== 'pending'
-        ? `${job.filesDone} / ${job.filesTotal}`
-        : null;
+    let detail: string | null = null;
+    if (state !== 'pending') {
+      if (s.id === 'process_files' && job.filesTotal > 0) {
+        detail = `${job.filesDone} / ${job.filesTotal}`;
+      } else if (s.id === 'embed' && job.chunksTotal !== null) {
+        detail = `${job.embeddedChunks} / ${job.chunksTotal} chunks`;
+      }
+    }
     return { id: s.id, label: s.label, state, detail };
   });
 }

@@ -1,15 +1,15 @@
 import { env } from './lib/env.js';
 import { createApp } from './app.js';
 import { pool } from './db/client.js';
-import { codeCollectionName, ensureCodeCollection } from './services/qdrant.js';
+import { defaultCollectionName, ensureDefaultCollection } from './services/qdrant.js';
 
 async function main(): Promise<void> {
   try {
-    await ensureCodeCollection();
+    await ensureDefaultCollection();
   } catch (err) {
     // Keep serving so /api/health can report the problem; retry happens on next restart.
     console.error(
-      `[qdrant] could not ensure collection ${codeCollectionName}:`,
+      `[qdrant] could not ensure collection ${defaultCollectionName}:`,
       err instanceof Error ? err.message : err,
     );
   }

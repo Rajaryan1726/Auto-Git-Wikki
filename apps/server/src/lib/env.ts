@@ -34,7 +34,20 @@ const envSchema = z.object({
   GEN_MODEL_PRIMARY: z.string().min(1),
   GEN_MODEL_FALLBACK: z.string().min(1),
   EMBEDDING_MODEL: z.string().min(1),
-  EMBEDDING_DIMS: z.coerce.number().int().positive(),
+  EMBEDDING_DIMS: z.coerce.number().int().min(128).max(3072),
+
+  // Embedding throttles (per server process, one per provider).
+  EMBED_CONCURRENCY: z.coerce.number().int().positive().max(16).default(2),
+  // Gemini meters embeddings per TEXT: texts/minute (free tier for gemini-embedding-2: 100).
+  GEMINI_EMBED_MAX_RPM: z.coerce.number().int().positive().default(90),
+  GEMINI_EMBED_BATCH_SIZE: z.coerce.number().int().positive().max(100).default(100),
+  /** Optional tokens-per-minute cap (estimated as chars / 4); 0 disables it. */
+  GEMINI_EMBED_MAX_TPM: z.coerce.number().int().min(0).default(0),
+  // OpenAI meters per CALL and per token.
+  OPENAI_EMBED_MAX_RPM: z.coerce.number().int().positive().default(500),
+  OPENAI_EMBED_MAX_TPM: z.coerce.number().int().min(0).default(900_000),
+  /** Texts per /v1/embeddings call (API max 2048 inputs and 300k tokens per request). */
+  OPENAI_EMBED_BATCH_SIZE: z.coerce.number().int().positive().max(2048).default(128),
 });
 
 export type Env = z.infer<typeof envSchema>;

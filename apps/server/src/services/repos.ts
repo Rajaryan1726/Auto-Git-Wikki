@@ -14,6 +14,8 @@ const jobFields = {
   commitSha: indexJobs.commitSha,
   filesTotal: indexJobs.filesTotal,
   filesDone: indexJobs.filesDone,
+  chunksTotal: indexJobs.chunksTotal,
+  embeddedChunks: indexJobs.embeddedChunks,
   error: indexJobs.error,
   finishedAt: indexJobs.finishedAt,
 };

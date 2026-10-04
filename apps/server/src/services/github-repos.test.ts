@@ -136,6 +136,8 @@ test('listUserRepos throws when a later page fails or is rate limited', async ()
 const job = (over: Partial<JobRow>): JobRow => ({
   id: 'job-1',
   currentStep: 'finalize',
+  chunksTotal: 10,
+  embeddedChunks: 10,
   status: 'done',
   commitSha: 'abc1234',
   filesTotal: 10,
@@ -157,11 +159,17 @@ test('deriveIndexStatus covers every state', () => {
     job({ status: 'running', currentStep: 'process_files', filesDone: 3 }),
   );
   assert.equal(running.state, 'indexing');
-  assert.equal(running.progress, 34); // 7% before files + 30% of the 90% file share
+  assert.equal(running.progress, 14); // 5% before files + 30% of the 30% file share
   assert.equal(running.commitSha, 'abc1234'); // previous good index still reported
   assert.equal(running.activeJobId, 'job-1');
   assert.equal(indexed.activeJobId, null);
   assert.equal(indexed.latestJobId, 'job-1');
+
+  // Legacy 3A job (no chunks_total) never counts as indexed.
+  assert.equal(
+    deriveIndexStatus(job({ chunksTotal: null }), job({ chunksTotal: null })).state,
+    'not_indexed',
+  );
 
   const queued = deriveIndexStatus(
     null,

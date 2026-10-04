@@ -20,7 +20,7 @@ Indexing is triggered **manually** by the user (an "Index" / "Re-index" button).
 - **DB**: PostgreSQL 16 with **Drizzle ORM** + drizzle-kit migrations.
 - **Vector DB**: Qdrant (`@qdrant/js-client-rest`).
 - **Background jobs**: Inngest (Express serve handler at `/api/inngest`).
-- **LLM / embeddings**: Gemini is primary. OpenAI is a fallback **for text generation only**. Model names come from env vars; check the current official SDK docs for exact model ids and package names instead of guessing.
+- **LLM / embeddings**: Text generation: Gemini primary, OpenAI fallback. **Embeddings: provider-configurable** (changed in Phase 3B at the user's request after the Gemini free-tier daily quota ran out): the provider follows the `EMBEDDING_MODEL` id (`gemini-*` → Gemini, `text-embedding-*` → OpenAI); the current default is OpenAI `text-embedding-3-small` @ 768. Model names come from env vars; check the current official docs for exact model ids instead of guessing.
 - **Code parsing**: `web-tree-sitter` (WASM grammars) for AST-based chunking.
 - Local infra via **docker-compose** (Postgres + Qdrant). Inngest dev server via `npx inngest-cli@latest dev`.
 
@@ -71,12 +71,22 @@ repositories
 index_jobs
   id (uuid pk), repo_id (fk repositories), status (enum: queued | running | done | failed),
   commit_sha, embedding_model, files_total (int), files_done (int),
+  embedding_dims (int, default 768; fixed with embedding_model at job creation),
+  chunks_total (int, nullable; null = Phase 3A job without vectors, never counts as indexed),
+  embedded_chunks (int), stats (jsonb: embedCalls, rateLimitHits, rateLimitWaitMs, skippedFiles, durationMs),
   current_step (text, nullable; id of the running step, or the step it failed on.
     The ordered step list lives in apps/server/src/services/index-steps.ts and is
     returned by GET /api/index-jobs/:id, so the UI never hardcodes steps),
   error (text), started_at, finished_at, created_at
   index (repo_id, created_at)
   unique index (repo_id) where status in (queued, running)  -- one active job per repo
+
+index_chunks   -- staging between "Processing files" and "Embedding & saving"; rows are
+               -- deleted when the job finishes or fails
+  id (bigint identity pk), job_id (fk index_jobs, cascade), point_id (uuid),
+  file_path, start_line, end_line, language, symbol (nullable), chunk_type, text,
+  embedded_at (nullable)
+  unique (job_id, point_id), index (job_id, embedded_at)
 
 wiki_pages
   id (uuid pk), repo_id (fk), index_job_id (fk), slug, title, parent_slug (nullable),
@@ -93,11 +103,15 @@ chat_messages
 
 ## Qdrant conventions
 
-- **One collection per embedding model**, not per repo. Name: `code_<provider>_<dims>` (e.g. `code_gemini_768`). Create on startup if missing, cosine distance.
-- Payload per point: `repo_id`, `commit_sha`, `file_path`, `start_line`, `end_line`, `language`, `symbol` (nullable), `chunk_type` (function | class | block | text), `text`.
-- Create payload indexes on `repo_id` and `commit_sha`.
+- **One collection per embedding model + dims**, not per repo. Name: `code_<sanitized model id>_<dims>` (lowercase, non-alphanumerics → `_`), e.g. `gemini-embedding-2` @ 768 → `code_gemini_embedding_2_768` (`collectionNameFor()` in `services/qdrant.ts`). Startup creates the collection for the env model if missing, cosine distance.
+- Payload per point: `repo_id`, `commit_sha`, `file_path`, `start_line`, `end_line`, `language`, `symbol` (nullable), `chunk_type` (function | class | block | text), `text`, `index_job_id` (the job that wrote it).
+- Create keyword payload indexes on `repo_id`, `commit_sha` and `index_job_id`.
 - Point id = deterministic UUID (v5) from `repo_id + commit_sha + file_path + start_line`, so retries are idempotent.
-- **Never mix embedding models for one repo.** The model is fixed when an index job starts and saved in `index_jobs.embedding_model`. Queries must embed with the same model as the repo's last successful job. If the embedding quota is hit, wait and retry; do NOT switch to another embedding provider mid-job.
+- **Never mix embedding models for one repo.** The model and dims are fixed when an index job is created (`index_jobs.embedding_model`, `index_jobs.embedding_dims`). Queries must take the model **and the collection** from the repo's last successful job (`services/search.ts`), never from the current env. If the embedding quota is hit, wait and retry (throttle + `step.sleep`); do NOT switch to another embedding provider mid-job.
+- After all embed batches of a job succeed, `cleanup-old-points` deletes the repo's points that this job did not write (`index_job_id` ≠ job), which removes older commits.
+- Embedding text formats live in `services/embedding-format.ts`, per provider: gemini-embedding-2 inlines the task instruction in the text (never send `task_type`); OpenAI embeds `path (symbol)` + blank line + code for documents and the raw question for queries. Index and query must use the same provider's formats.
+- A successful job also deletes the repo's points from other collections (earlier embedding models), so each repo lives in exactly one collection.
+- Throttles are per provider and per process: Gemini meters per text (`GEMINI_EMBED_MAX_RPM`), OpenAI per call and token (`OPENAI_EMBED_MAX_RPM` / `_TPM`). Re-indexing reuses existing points whose text is unchanged (no embedding call).
 
 ## Design system (Theme A — "Wine & cream")
 

@@ -25,8 +25,22 @@ export const indexJobSchema = z.object({
   currentStepLabel: z.string().nullable(),
   commitSha: z.string().nullable(),
   embeddingModel: z.string(),
+  embeddingDims: z.number(),
   filesTotal: z.number(),
   filesDone: z.number(),
+  /** Null for jobs from before embeddings existed. */
+  chunksTotal: z.number().nullable(),
+  embeddedChunks: z.number(),
+  /** Finished with every chunk embedded and saved: the repo can be searched/chatted with. */
+  searchable: z.boolean(),
+  stats: z.object({
+    embedCalls: z.number().optional(),
+    reusedChunks: z.number().optional(),
+    rateLimitHits: z.number().optional(),
+    rateLimitWaitMs: z.number().optional(),
+    skippedFiles: z.number().optional(),
+    durationMs: z.number().optional(),
+  }),
   /** 0–100. */
   progress: z.number(),
   error: z.string().nullable(),

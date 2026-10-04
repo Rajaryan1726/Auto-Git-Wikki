@@ -151,16 +151,16 @@ test('TypeScript: functions, arrow functions, classes, exports and doc comments'
   ].join('\n');
   const chunks = await chunkFile('src/math.ts', src);
   assertWellFormed(chunks, src);
+  // The tiny import header and the one-line const fold into the next chunk.
   assert.deepEqual(summary(chunks), [
-    'block:-',
     'function:add',
     'function:double',
-    'block:-',
     'class:Store',
     'class:Shape',
   ]);
   const add = chunks.find((c) => c.symbol === 'add')!;
-  assert.equal(add.startLine, 4, 'doc comment attached to the function');
+  assert.ok(add.text.includes('/** Adds numbers. */'), 'doc comment attached to the function');
+  assert.ok(chunks.find((c) => c.symbol === 'Store')!.text.startsWith('const CONFIG'));
   assert.equal(add.language, 'typescript');
 });
 
@@ -216,8 +216,8 @@ test('Python: decorated functions and classes', async () => {
   ].join('\n');
   const chunks = await chunkFile('app/main.py', src);
   assertWellFormed(chunks, src);
-  assert.deepEqual(summary(chunks), ['block:-', 'function:index', 'class:Service']);
-  assert.equal(chunks[1]!.startLine, 3, 'decorator included');
+  assert.deepEqual(summary(chunks), ['function:index', 'class:Service']);
+  assert.ok(chunks[0]!.text.includes('@app.route'), 'decorator included');
   assert.equal(chunks[0]!.language, 'python');
 });
 
@@ -237,12 +237,7 @@ test('Go: methods are named Receiver.method', async () => {
   ].join('\n');
   const chunks = await chunkFile('main.go', src);
   assertWellFormed(chunks, src);
-  assert.deepEqual(summary(chunks), [
-    'block:-',
-    'class:Server',
-    'function:Server.Start',
-    'function:main',
-  ]);
+  assert.deepEqual(summary(chunks), ['class:Server', 'function:Server.Start', 'function:main']);
 });
 
 test('Rust: impl blocks and functions', async () => {
@@ -296,4 +291,39 @@ test('syntax errors still produce well-formed chunks', async () => {
   const chunks = await chunkFile('broken.ts', src);
   assertWellFormed(chunks, src);
   assert.ok(chunks.length >= 1);
+});
+
+test('tiny blocks (divider comments, trailing exports) fold into a neighbour', async () => {
+  const body = (name: string) => [
+    `function ${name}() {`,
+    ...Array.from({ length: 8 }, (_, i) => `  const v${i} = ${i};`),
+    '}',
+  ];
+  const src = [
+    "import { a } from './a';",
+    '',
+    '// ---- claims ------------------------------------------------',
+    '',
+    ...body('first'),
+    '',
+    '// ---- engine ------------------------------------------------',
+    '',
+    ...body('second'),
+    '',
+    'export default second;',
+  ].join('\n');
+  const chunks = await chunkFile('mod.js', src);
+  assertWellFormed(chunks, src);
+  assert.ok(
+    chunks.every((c) => c.startLine !== c.endLine),
+    `no single-line chunks: ${chunks.map((c) => `${c.startLine}-${c.endLine}`).join(', ')}`,
+  );
+  const first = chunks.find((c) => c.symbol === 'first')!;
+  const second = chunks.find((c) => c.symbol === 'second')!;
+  assert.ok(first.text.includes('---- claims'), 'divider joins the code it introduces');
+  assert.ok(second.text.includes('---- engine'));
+  assert.ok(
+    second.text.endsWith('export default second;'),
+    'trailing export joins the previous chunk',
+  );
 });

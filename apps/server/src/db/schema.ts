@@ -17,6 +17,15 @@ import {
 
 export type SourceRef = { path: string; startLine: number; endLine: number };
 
+export type IndexJobStats = {
+  embedCalls?: number;
+  reusedChunks?: number;
+  rateLimitHits?: number;
+  rateLimitWaitMs?: number;
+  skippedFiles?: number;
+  durationMs?: number;
+};
+
 export const indexJobStatus = pgEnum('index_job_status', ['queued', 'running', 'done', 'failed']);
 export const chatRole = pgEnum('chat_role', ['user', 'assistant']);
 
@@ -81,10 +90,20 @@ export const indexJobs = pgTable(
     status: indexJobStatus('status').notNull().default('queued'),
     commitSha: text('commit_sha'),
     embeddingModel: text('embedding_model').notNull(),
+    // Fixed at job creation together with embedding_model; picks the Qdrant collection.
+    embeddingDims: integer('embedding_dims').notNull().default(768),
     filesTotal: integer('files_total').notNull().default(0),
     filesDone: integer('files_done').notNull().default(0),
+    // Null for jobs from before embeddings existed (Phase 3A); those never count as indexed.
+    chunksTotal: integer('chunks_total'),
+    embeddedChunks: integer('embedded_chunks').notNull().default(0),
     // Id of the pipeline step that is running (or failed); see services/index-steps.ts.
     currentStep: text('current_step'),
+    // Run statistics: embedding calls, rate-limit hits, timings.
+    stats: jsonb('stats')
+      .$type<IndexJobStats>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     error: text('error'),
     startedAt: timestamp('started_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
@@ -96,6 +115,34 @@ export const indexJobs = pgTable(
     uniqueIndex('index_jobs_one_active_per_repo')
       .on(t.repoId)
       .where(sql`${t.status} in ('queued', 'running')`),
+  ],
+);
+
+/**
+ * Chunks produced by the "Processing files" step, waiting to be embedded. Rows are
+ * deleted when the job finishes or fails; vectors + payload then live in Qdrant.
+ */
+export const indexChunks = pgTable(
+  'index_chunks',
+  {
+    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    jobId: uuid('job_id')
+      .notNull()
+      .references(() => indexJobs.id, { onDelete: 'cascade' }),
+    /** Deterministic Qdrant point id (uuid v5 of repo, commit, path, start line). */
+    pointId: uuid('point_id').notNull(),
+    filePath: text('file_path').notNull(),
+    startLine: integer('start_line').notNull(),
+    endLine: integer('end_line').notNull(),
+    language: text('language').notNull(),
+    symbol: text('symbol'),
+    chunkType: text('chunk_type').notNull(),
+    text: text('text').notNull(),
+    embeddedAt: timestamp('embedded_at', { withTimezone: true }),
+  },
+  (t) => [
+    unique('index_chunks_job_point_uq').on(t.jobId, t.pointId),
+    index('index_chunks_job_pending_idx').on(t.jobId, t.embeddedAt),
   ],
 );
 

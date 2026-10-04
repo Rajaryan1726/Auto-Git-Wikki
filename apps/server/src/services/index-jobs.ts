@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import type { ActiveIndexJob, IndexJob } from '@autowiki/shared';
 import { db } from '../db/client.js';
-import { indexJobs, repositories } from '../db/schema.js';
+import { indexChunks, indexJobs, repositories } from '../db/schema.js';
 import { env } from '../lib/env.js';
 import { describeSteps, jobProgress, stepLabel, type IndexStepId } from './index-steps.js';
 
@@ -9,6 +9,11 @@ type JobRow = typeof indexJobs.$inferSelect;
 
 /** A queued job the worker never picked up (e.g. Inngest dev server not running). */
 const STALE_QUEUED_MS = 10 * 60 * 1000;
+
+/** A job counts as an index only if it finished the embedding step (not legacy 3A jobs). */
+export function isSearchableJob(job: Pick<JobRow, 'status' | 'chunksTotal'>): boolean {
+  return job.status === 'done' && job.chunksTotal !== null;
+}
 
 export function serializeJob(job: JobRow): IndexJob {
   return {
@@ -19,8 +24,13 @@ export function serializeJob(job: JobRow): IndexJob {
     currentStepLabel: stepLabel(job.currentStep),
     commitSha: job.commitSha,
     embeddingModel: job.embeddingModel,
+    embeddingDims: job.embeddingDims,
     filesTotal: job.filesTotal,
     filesDone: job.filesDone,
+    chunksTotal: job.chunksTotal,
+    embeddedChunks: job.embeddedChunks,
+    searchable: isSearchableJob(job),
+    stats: job.stats,
     progress: jobProgress(job),
     error: job.error,
     startedAt: job.startedAt?.toISOString() ?? null,
@@ -80,7 +90,9 @@ export async function createIndexJob(repoId: string): Promise<{ job: JobRow; cre
         repoId,
         status: 'queued',
         currentStep: 'queued' satisfies IndexStepId,
+        // Fixed for the whole job: never switch embedding model mid-job.
         embeddingModel: env.EMBEDDING_MODEL,
+        embeddingDims: env.EMBEDDING_DIMS,
       })
       .returning();
     return { job: job!, created: true };
@@ -142,6 +154,7 @@ export async function setFilesDone(jobId: string, filesDone: number): Promise<vo
 }
 
 export async function failJob(jobId: string, message: string): Promise<void> {
+  await db.delete(indexChunks).where(eq(indexChunks.jobId, jobId));
   await db
     .update(indexJobs)
     .set({ status: 'failed', error: message.slice(0, 1000), finishedAt: new Date() })

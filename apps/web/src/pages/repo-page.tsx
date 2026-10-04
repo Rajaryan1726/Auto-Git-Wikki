@@ -59,7 +59,7 @@ function useIndexView(repo: RepoSummary): IndexView {
   return {
     job,
     // A just-finished job counts before the repo summary has been refetched (no flash).
-    hasIndex: repo.status.commitSha !== null || job?.status === 'done',
+    hasIndex: repo.status.commitSha !== null || job?.searchable === true,
     active,
     failed,
     start: () => startIndex.mutate(),
@@ -156,7 +156,7 @@ function RepoActions({ repo, view }: { repo: RepoSummary; view: IndexView }) {
 }
 
 function IndexedLine({ repo, job }: { repo: RepoSummary; job: IndexJob | undefined }) {
-  const fromJob = job?.status === 'done' ? job : null;
+  const fromJob = job?.searchable ? job : null;
   const sha = repo.status.commitSha ?? fromJob?.commitSha ?? null;
   const at = repo.status.lastIndexedAt ?? fromJob?.finishedAt ?? null;
   if (!sha) return null;
@@ -343,7 +343,17 @@ function HistoryPanel({ repo }: { repo: RepoSummary }) {
               <span>
                 {job.filesDone}/{job.filesTotal} files
               </span>
+              {job.chunksTotal !== null ? (
+                <span>
+                  {job.embeddedChunks}/{job.chunksTotal} chunks embedded
+                </span>
+              ) : (
+                job.status === 'done' && <span>no vectors</span>
+              )}
             </p>
+            {job.status === 'done' && !job.searchable && job.error && (
+              <p className="mt-0.5 text-xs text-warning">{job.error}</p>
+            )}
             {job.status === 'failed' && job.error && (
               <p className="mt-0.5 text-xs text-danger [overflow-wrap:anywhere]">
                 {job.currentStepLabel && <>At “{job.currentStepLabel}”: </>}

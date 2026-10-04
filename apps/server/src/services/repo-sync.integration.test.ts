@@ -233,6 +233,8 @@ describe('repo sync + listing', { skip: !dbAvailable && 'Postgres unavailable' }
         status: 'done',
         commitSha: 'deadbeefcafe',
         embeddingModel: 'test',
+        chunksTotal: 3,
+        embeddedChunks: 3,
         finishedAt: new Date(),
       })
       .returning();
@@ -254,7 +256,7 @@ describe('repo sync + listing', { skip: !dbAvailable && 'Postgres unavailable' }
     const status = (n: string) => all.find((r) => r.name === n)!.status;
     assert.equal(status('alpha-api').state, 'indexed');
     assert.equal(status('alpha-api').commitSha, 'deadbeefcafe');
-    assert.deepEqual([status('beta-web').state, status('beta-web').progress], ['indexing', 30]);
+    assert.deepEqual([status('beta-web').state, status('beta-web').progress], ['indexing', 13]);
     assert.equal(status('gamma_tools').state, 'not_indexed');
   });
 

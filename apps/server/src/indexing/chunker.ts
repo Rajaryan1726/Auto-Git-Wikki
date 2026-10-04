@@ -302,6 +302,39 @@ function mergeBlocks(ctx: Ctx, ranges: Range[]): Range[] {
   return out;
 }
 
+/** Below this many non-blank characters a block is too small to be useful on its own. */
+export const TINY_BLOCK_CHARS = 100;
+
+function contentChars(lines: string[], start: number, end: number): number {
+  let n = 0;
+  for (let i = start; i <= end; i++) n += (lines[i] ?? '').trim().length;
+  return n;
+}
+
+/**
+ * Folds tiny `block` ranges (section-divider comments, a trailing `export default x`)
+ * into a neighbour: preferably the next range (dividers introduce what follows), else the
+ * previous one. Limits still apply, and ranges stay sorted and non-overlapping.
+ */
+function absorbTinyBlocks(ctx: Ctx, ranges: Range[]): Range[] {
+  const out = ranges.map((r) => ({ ...r }));
+  const fits = (start: number, end: number) => !tooBig(ctx, start, end);
+  for (let i = 0; i < out.length; i++) {
+    const r = out[i]!;
+    if (r.type !== 'block' || contentChars(ctx.lines, r.start, r.end) >= TINY_BLOCK_CHARS) continue;
+    const next = out[i + 1];
+    const prev = out[i - 1];
+    if (next && fits(r.start, next.end)) {
+      next.start = r.start;
+    } else if (prev && fits(prev.start, r.end)) {
+      prev.end = r.end;
+    } else continue;
+    out.splice(i, 1);
+    i--;
+  }
+  return out;
+}
+
 /** Turns row ranges into chunks: trims blank edge lines and drops empty ranges. */
 function toChunks(lines: string[], ranges: Range[], language: string): Chunk[] {
   const chunks: Chunk[] = [];
@@ -395,7 +428,10 @@ export async function chunkFile(path: string, content: string): Promise<Chunk[]>
   if (!tree) return chunkText(lines, language);
   try {
     const ctx: Ctx = { lines, config };
-    const ranges = mergeBlocks(ctx, chunkSiblings(ctx, namedChildren(tree.rootNode), null));
+    const ranges = absorbTinyBlocks(
+      ctx,
+      mergeBlocks(ctx, chunkSiblings(ctx, namedChildren(tree.rootNode), null)),
+    );
     return toChunks(lines, ranges, language);
   } finally {
     tree.delete(); // free WASM memory

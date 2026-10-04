@@ -5,6 +5,8 @@ export type JobRow = {
   id: string;
   status: 'queued' | 'running' | 'done' | 'failed';
   currentStep: string | null;
+  chunksTotal: number | null;
+  embeddedChunks: number;
   commitSha: string | null;
   filesTotal: number;
   filesDone: number;
@@ -20,7 +22,9 @@ export function deriveIndexStatus(
   lastIndexed: JobRow | null | undefined,
   latest: JobRow | null | undefined,
 ): RepoIndexStatus {
-  const done = lastIndexed?.status === 'done' ? lastIndexed : null;
+  // Legacy 3A jobs (chunks_total null) finished without vectors and never count.
+  const done =
+    lastIndexed?.status === 'done' && lastIndexed.chunksTotal !== null ? lastIndexed : null;
   const active = latest && (latest.status === 'queued' || latest.status === 'running');
   const base = {
     commitSha: done?.commitSha ?? null,

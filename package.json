@@ -22,7 +22,8 @@
     "infra:down": "docker compose down",
     "inngest:dev": "npx --yes inngest-cli@latest dev -u http://localhost:4000/api/inngest",
     "test": "npm run test --workspaces --if-present",
-    "dev:chunks": "tsx apps/server/src/scripts/dev-chunks.ts"
+    "dev:chunks": "tsx apps/server/src/scripts/dev-chunks.ts",
+    "dev:search": "tsx apps/server/src/scripts/dev-search.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

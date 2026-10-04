@@ -39,6 +39,8 @@ const job = (over: Partial<Parameters<typeof describeSteps>[0]>) => ({
   currentStep: 'process_files',
   filesTotal: 10,
   filesDone: 4,
+  chunksTotal: null as number | null,
+  embeddedChunks: 0,
   ...over,
 });
 
@@ -46,17 +48,27 @@ test('describeSteps marks done/current/pending and file detail', () => {
   const steps = describeSteps(job({}));
   assert.deepEqual(
     steps.map((s) => s.state),
-    ['done', 'done', 'done', 'current', 'pending'],
+    ['done', 'done', 'done', 'current', 'pending', 'pending'],
   );
   assert.equal(steps.find((s) => s.id === 'process_files')!.detail, '4 / 10');
   assert.equal(steps.length, INDEX_STEPS.length);
+});
+
+test('describeSteps reports embedding progress in chunks', () => {
+  const steps = describeSteps(
+    job({ currentStep: 'embed', filesDone: 10, chunksTotal: 120, embeddedChunks: 40 }),
+  );
+  const embed = steps.find((s) => s.id === 'embed')!;
+  assert.equal(embed.state, 'current');
+  assert.equal(embed.detail, '40 / 120 chunks');
+  assert.equal(embed.label, 'Embedding & saving');
 });
 
 test('describeSteps shows the failed step and all-done', () => {
   const failed = describeSteps(job({ status: 'failed', currentStep: 'list_files' }));
   assert.deepEqual(
     failed.map((s) => s.state),
-    ['done', 'done', 'failed', 'pending', 'pending'],
+    ['done', 'done', 'failed', 'pending', 'pending', 'pending'],
   );
   assert.ok(describeSteps(job({ status: 'done' })).every((s) => s.state === 'done'));
   const queued = describeSteps(job({ status: 'queued', currentStep: 'queued', filesTotal: 0 }));
@@ -71,7 +83,12 @@ test('jobProgress is monotonic across steps and capped below 100 until done', ()
     jobProgress(job({ filesDone: 0 })),
     jobProgress(job({ filesDone: 5 })),
     jobProgress(job({ filesDone: 10 })),
-    jobProgress(job({ currentStep: 'finalize', filesDone: 10 })),
+    jobProgress(job({ currentStep: 'embed', filesDone: 10, chunksTotal: 50, embeddedChunks: 0 })),
+    jobProgress(job({ currentStep: 'embed', filesDone: 10, chunksTotal: 50, embeddedChunks: 25 })),
+    jobProgress(job({ currentStep: 'embed', filesDone: 10, chunksTotal: 50, embeddedChunks: 50 })),
+    jobProgress(
+      job({ currentStep: 'finalize', filesDone: 10, chunksTotal: 50, embeddedChunks: 50 }),
+    ),
   ];
   for (let i = 1; i < values.length; i++) assert.ok(values[i]! >= values[i - 1]!, String(values));
   assert.ok(values.every((v) => v < 100));
