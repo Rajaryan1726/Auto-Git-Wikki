@@ -42,7 +42,7 @@ export function createSseParser() {
   };
 }
 
-// ---- chat stream contract: sources, then tokens, then done | error ----
+// ---- chat stream contract: sources, then tokens (reset → tokens again), then done | error ----
 
 export type ChatSource = {
   /** 1-based number used by [n] markers in the answer. */
@@ -55,5 +55,7 @@ export type ChatSource = {
 export type ChatStreamEvent =
   | { event: 'sources'; data: { sources: ChatSource[]; commitSha: string; userMessageId: string } }
   | { event: 'token'; data: { text: string } }
+  /** The model failed mid-answer; clear the text so far, a fallback model restarts it. */
+  | { event: 'reset'; data: { reason: string } }
   | { event: 'done'; data: { messageId: string; model: string } }
   | { event: 'error'; data: { code: string; message: string } };

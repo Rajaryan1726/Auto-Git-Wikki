@@ -203,14 +203,52 @@ export async function openStream(
   );
 }
 
+export type AnswerEvent =
+  /** A model started producing text (sent again after a reset). */
+  | { type: 'model'; model: string; failures: OpenedStream['failures'] }
+  | { type: 'token'; text: string }
+  /** The model failed mid-answer; discard the text so far, the next model restarts. */
+  | { type: 'reset'; failedModel: string; reason: string };
+
+/**
+ * Like openStream, but also survives a failure in the middle of an answer (e.g. Gemini
+ * "high demand" after some tokens): it emits `reset` and restarts with the next model.
+ */
+export async function* resilientStream(
+  req: GenerateRequest,
+  models: string[] = [env.GEN_MODEL_PRIMARY, env.GEN_MODEL_FALLBACK],
+  fetchImpl: FetchLike = fetch,
+): AsyncGenerator<AnswerEvent> {
+  let remaining = models;
+  for (;;) {
+    const opened = await openStream(req, remaining, fetchImpl); // throws if none can start
+    yield { type: 'model', model: opened.model, failures: opened.failures };
+    try {
+      for await (const text of opened.stream) yield { type: 'token', text };
+      return;
+    } catch (err) {
+      if (req.signal?.aborted) throw err;
+      remaining = remaining.slice(remaining.indexOf(opened.model) + 1);
+      const reason = err instanceof Error ? err.message : String(err);
+      console.warn(`[llm] ${opened.model} failed mid-stream: ${reason.slice(0, 200)}`);
+      if (remaining.length === 0) throw err;
+      yield { type: 'reset', failedModel: opened.model, reason };
+    }
+  }
+}
+
 /** Non-streaming convenience (query rewriting): collects the full text, with fallback. */
 export async function generateText(
   req: GenerateRequest,
   models?: string[],
   fetchImpl: FetchLike = fetch,
 ): Promise<{ text: string; model: string }> {
-  const opened = await openStream(req, models, fetchImpl);
   let text = '';
-  for await (const t of opened.stream) text += t;
-  return { text, model: opened.model };
+  let model = '';
+  for await (const e of resilientStream(req, models, fetchImpl)) {
+    if (e.type === 'model') model = e.model;
+    else if (e.type === 'token') text += e.text;
+    else text = '';
+  }
+  return { text, model };
 }

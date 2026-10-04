@@ -47,7 +47,10 @@ async function main(): Promise<void> {
       history: [],
     });
     let text = '';
-    for await (const t of (await streamAnswer(first)).stream) text += t;
+    for await (const e of streamAnswer(first)) {
+      if (e.type === 'token') text += e.text;
+      else if (e.type === 'reset') text = '';
+    }
     history.push({ role: 'user', content: earlier }, { role: 'assistant', content: text });
   }
 
@@ -58,18 +61,26 @@ async function main(): Promise<void> {
     question,
     history,
   });
-  const opened = await streamAnswer(prepared);
   let answer = '';
-  for await (const t of opened.stream) answer += t;
+  let model = '';
+  const failed: string[] = [];
+  for await (const e of streamAnswer(prepared)) {
+    if (e.type === 'model') {
+      model = e.model;
+      failed.push(...e.failures.map((f) => `${f.model}: ${f.message.slice(0, 80)}`));
+    } else if (e.type === 'token') answer += e.text;
+    else {
+      failed.push(`${e.failedModel} (mid-answer): ${e.reason.slice(0, 80)}`);
+      answer = '';
+    }
+  }
 
   console.log(`# ${repo.fullName} @ ${prepared.commitSha.slice(0, 7)}`);
   console.log(`# question: ${question}`);
   if (prepared.rewritten) console.log(`# search query (rewritten): ${prepared.searchQuery}`);
   console.log(
-    `# answered by: ${opened.model}` +
-      (opened.failures.length
-        ? ` (fallback; failed first: ${opened.failures.map((f) => `${f.model}: ${f.message.slice(0, 80)}`).join('; ')})`
-        : ''),
+    `# answered by: ${model}` +
+      (failed.length ? ` (fallback; failed first: ${failed.join('; ')})` : ''),
   );
   console.log(`# ${Date.now() - started} ms`);
   console.log('# sources:');

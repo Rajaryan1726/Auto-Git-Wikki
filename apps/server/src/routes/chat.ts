@@ -152,11 +152,23 @@ threadsRouter.post('/:id/ask', async (req, res) => {
       data: { sources, commitSha, userMessageId: userMessage.id },
     });
 
-    const opened = await streamAnswer(prepared, abort.signal);
-    model = opened.model;
-    for await (const token of opened.stream) {
-      text += token;
-      send(res, { event: 'token', data: { text: token } });
+    const failed: string[] = [];
+    for await (const e of streamAnswer(prepared, abort.signal)) {
+      if (e.type === 'model') {
+        model = e.model;
+        failed.push(...e.failures.map((f) => f.model));
+      } else if (e.type === 'token') {
+        text += e.text;
+        send(res, { event: 'token', data: { text: e.text } });
+      } else {
+        // Primary failed mid-answer: the client clears its text, the fallback restarts.
+        failed.push(e.failedModel);
+        text = '';
+        send(res, {
+          event: 'reset',
+          data: { reason: 'The model failed mid-answer; retrying with a fallback model.' },
+        });
+      }
     }
 
     const saved = await insertMessage({
@@ -169,13 +181,11 @@ threadsRouter.post('/:id/ask', async (req, res) => {
     });
     console.log(
       `[chat] thread ${thread.id}: answered by ${model}` +
-        (opened.failures.length
-          ? ` (fallback after ${opened.failures.map((f) => f.model).join(', ')})`
-          : '') +
+        (failed.length ? ` (fallback after ${failed.join(', ')})` : '') +
         ` | query: ${prepared.rewritten ? `rewritten -> "${prepared.searchQuery}"` : 'as asked'}` +
         ` | ${sources.length} sources`,
     );
-    send(res, { event: 'done', data: { messageId: saved.id, model } });
+    send(res, { event: 'done', data: { messageId: saved.id, model: model ?? 'unknown' } });
   } catch (err) {
     if (abort.signal.aborted) {
       // Client pressed stop: keep what was generated so far.

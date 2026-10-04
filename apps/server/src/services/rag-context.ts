@@ -63,7 +63,7 @@ export function queryKeywords(query: string): string[] {
 }
 
 const GENERAL_QUESTION =
-  /\b(setup|set up|install|installation|readme|docs?|documentation|overview|getting started|configure|configuration|deploy|deployment|environment|env vars?|architecture|project|repo(sitory)?|what (is|does) (this|it)|how (do|can) i (run|start|use|build))\b/i;
+  /\b(setup|set up|install|installation|readme|docs?|documentation|overview|getting started|configure|configuration|deploy|deployment|environment|env vars?|architecture|project|what (is|does) (this|it)|how (do|can) i (run|start|use|build))\b/i;
 
 /** True when docs/markdown are a good answer source (setup, docs, the project in general). */
 export function isGeneralQuestion(query: string): boolean {
@@ -319,7 +319,8 @@ export function answerUserTurn(question: string, blocks: ContextBlock[]): string
 export const REWRITE_SYSTEM_PROMPT = [
   'You turn a follow-up question from a conversation about a code repository into one standalone search query.',
   'Resolve references such as "it", "that function" or "there" using the conversation.',
-  'Keep identifiers, file names and technical terms. Output only the query on one line, without quotes or explanations.',
+  'Keep identifiers, file names and technical terms. Do not add filler such as "in the repository" or "in the codebase".',
+  'Output only the query on one line, without quotes or explanations.',
 ].join('\n');
 
 /** Cleans a model-written search query; falls back to the original question. */

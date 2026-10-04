@@ -232,3 +232,12 @@ test('cleanRewrittenQuery strips labels and quotes, falls back when empty', () =
   );
   assert.equal(cleanRewrittenQuery('   \n  ', 'orig'), 'orig');
 });
+
+test('a rewritten query mentioning "the repository" is not treated as a docs question', () => {
+  assert.equal(
+    isGeneralQuestion(
+      'Where are the decider ADD, UPDATE and DELETE rules tested in the repository?',
+    ),
+    false,
+  );
+});

@@ -60,6 +60,8 @@ export function useDeleteThread(repoId: string) {
 export type StreamHandlers = {
   onSources: (sources: ChatSource[], commitSha: string) => void;
   onToken: (text: string) => void;
+  /** The model failed mid-answer; discard the text so far (a fallback restarts it). */
+  onReset: () => void;
   onDone: (messageId: string, model: string) => void;
   onError: (code: string, message: string) => void;
 };
@@ -104,6 +106,7 @@ export async function streamAsk(
       const e = { event: msg.event, data: JSON.parse(msg.data) } as ChatStreamEvent;
       if (e.event === 'sources') handlers.onSources(e.data.sources, e.data.commitSha);
       else if (e.event === 'token') handlers.onToken(e.data.text);
+      else if (e.event === 'reset') handlers.onReset();
       else if (e.event === 'done') {
         finished = true;
         handlers.onDone(e.data.messageId, e.data.model);

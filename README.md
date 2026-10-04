@@ -35,6 +35,8 @@ If port 5432 or 6333 is already taken, change `POSTGRES_HOST_PORT` / `QDRANT_HOS
 | `npm test`                                    | Server unit + integration tests (integration needs infra up)                                 |
 | `npm run dev:chunks -- <repoId> <path>`       | Print the chunks for one file (`local <path>` for a file on disk; `--text` shows chunk text) |
 | `npm run dev:search -- <repoId> "<question>"` | Semantic search over a repo's last successful index (`--k 5`, `--text`)                      |
+| `npm run dev:ask -- <repoId> "<question>"`    | Ask one question through the chat RAG pipeline (`--follow-up "<earlier question>"`)          |
+| `npm run eval:retrieval`                      | Retrieval eval: hit@3 and MRR@10, dense vs re-scored (`--verbose` shows the top 3)           |
 | `npm run format`                              | Prettier write                                                                               |
 | `npm run db:generate`                         | Generate a Drizzle migration from the schema                                                 |
 | `npm run db:migrate`                          | Apply pending migrations                                                                     |

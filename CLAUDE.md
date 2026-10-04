@@ -98,7 +98,11 @@ chat_threads
 
 chat_messages
   id (uuid pk), thread_id (fk chat_threads, cascade), role (enum: user | assistant),
-  content (text), sources (jsonb: [{ path, startLine, endLine }]), created_at
+  content (text), sources (jsonb: [{ n, path, startLine, endLine }]),
+  model (text, nullable; assistant: generation model that answered),
+  commit_sha (text, nullable; assistant: indexed commit the sources point at),
+  created_at
+  index (thread_id, created_at); chat_threads has index (user_id, repo_id, updated_at)
 ```
 
 ## Qdrant conventions
@@ -144,6 +148,14 @@ Style: radius 10–16px, 1px borders, no gradients, no emoji, inline stroke icon
 - **Repositories (dashboard)**: title + subtitle, "Sync from GitHub" button, search input, filter pills (All / Public / Private / Indexed), responsive grid of repo cards. Card: repo name (mono), visibility pill, description, language dot, "updated X ago", status badge (Indexed = success, Indexing N% = warning + progress bar, Not indexed = soft/muted, Index failed = danger).
 - **Repo page**: breadcrumb, header card (initial avatar in accent square, name, description, meta row, status badge with commit), buttons "Re-index" (secondary) and "Chat with repo" (primary), tabs (Wiki / Files / Index history), wiki layout = pages TOC on the left + article on the right with code blocks and "Sources" chips.
 - **Chat**: recent threads list, header with repo pill, messages (user = accent bubble on the right; assistant = left with text, code blocks, "Sources" chips), suggestion chips, textarea + send icon button.
+
+## Chat / RAG conventions
+
+- Retrieval for chat always goes through `searchRepo` (repo's last successful job: model, collection, commit). Never embed queries with the env model.
+- Pipeline (`services/rag.ts`): rewrite follow-ups into a standalone query (generation model, last 6 messages; skipped for the first message) → `searchRepo` top 30 → `rankHits` re-scoring (keyword boosts on path/symbol/text weighted by rarity, docs penalty unless the question is about setup/docs/project) → `buildContext` (merge same-file neighbours, ≤10 blocks, 24k chars) → stream. Pure parts live in `services/rag-context.ts` and are unit-tested; `npm run eval:retrieval` measures hit@3/MRR on `apps/server/eval/retrieval-set.json`.
+- Repository text is untrusted: the system prompt wraps it in `<context>` and tells the model to treat it as data and ignore any instructions inside it.
+- Generation: `GEN_MODEL_PRIMARY` (Gemini) then `GEN_MODEL_FALLBACK` (OpenAI). The fallback takes over on any primary failure before the first token, and also mid-answer (SSE `reset` event, the client discards the partial text). The answering model is stored on the message.
+- Ask stream (`POST /api/threads/:id/ask`, SSE): `sources` → `token`* (→ `reset` → `token`*) → `done` | `error`. The user message is saved immediately; the assistant message when the stream ends (or the partial text, marked "(stopped)", when the client stops it).
 
 ## Engineering rules
 

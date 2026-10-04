@@ -393,6 +393,7 @@ function Conversation({
         {
           onSources: (sources, commitSha) => setPending((p) => p && { ...p, sources, commitSha }),
           onToken: (t) => setPending((p) => p && { ...p, text: p.text + t }),
+          onReset: () => setPending((p) => p && { ...p, text: '' }),
           onDone: (messageId) => {
             setPending((p) => p && { ...p, doneId: messageId });
             void refresh(threadIdForStream).then(() => setPending(null));
@@ -404,8 +405,14 @@ function Conversation({
       );
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        // Stopped: the server keeps the partial answer; show the saved version.
-        if (tid) await refresh(tid);
+        // Stopped: the server saves the partial answer once it notices the disconnect, so
+        // keep the streamed text visible until the saved copy can be fetched.
+        if (tid) {
+          const stoppedThread = tid;
+          await new Promise((r) => setTimeout(r, 800));
+          await refresh(stoppedThread);
+          setTimeout(() => void refresh(stoppedThread), 1700);
+        }
         setPending(null);
         return;
       }

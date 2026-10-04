@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createSseParser, formatSseEvent } from '@autowiki/shared';
-import { LlmError, generateText, openStream, providerForGenModel } from './llm.js';
+import { LlmError, generateText, openStream, providerForGenModel, resilientStream } from './llm.js';
 
 function sse(lines: string[], status = 200): Response {
   return new Response(lines.join(''), {
@@ -98,4 +98,44 @@ test('an OpenAI response.failed event surfaces as an error', async () => {
     generateText(req, ['gpt-6-luna'], fetchImpl),
     /All generation models failed/,
   );
+});
+
+test('a mid-answer failure resets and restarts with the fallback model', async () => {
+  const fetchImpl = (async (url: string) =>
+    String(url).includes('generativelanguage')
+      ? sse([
+          geminiChunk('Partial '),
+          `data: ${JSON.stringify({ error: { message: 'This model is currently experiencing high demand.', code: 503 } })}\n\n`,
+        ])
+      : sse([openaiDelta('Full '), openaiDelta('answer')])) as unknown as typeof fetch;
+  const events = [];
+  for await (const e of resilientStream(req, ['gemini-3.8-flash', 'gpt-6-luna'], fetchImpl)) {
+    events.push(
+      e.type === 'token' ? `token:${e.text}` : e.type === 'model' ? `model:${e.model}` : 'reset',
+    );
+  }
+  assert.deepEqual(events, [
+    'model:gemini-3.8-flash',
+    'token:Partial ',
+    'reset',
+    'model:gpt-6-luna',
+    'token:Full ',
+    'token:answer',
+  ]);
+  // generateText drops the partial text after a reset.
+  assert.deepEqual(await generateText(req, ['gemini-3.8-flash', 'gpt-6-luna'], fetchImpl), {
+    text: 'Full answer',
+    model: 'gpt-6-luna',
+  });
+});
+
+test('a mid-answer failure on the last model is thrown', async () => {
+  const fetchImpl = (async () =>
+    sse([
+      openaiDelta('x'),
+      `data: ${JSON.stringify({ type: 'response.failed', response: { error: { message: 'boom' } } })}\n\n`,
+    ])) as unknown as typeof fetch;
+  await assert.rejects(async () => {
+    for await (const _e of resilientStream(req, ['gpt-6-luna'], fetchImpl)) void _e;
+  }, /boom/);
 });

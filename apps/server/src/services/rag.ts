@@ -1,5 +1,5 @@
 import type { ChatSource } from '@autowiki/shared';
-import { generateText, openStream, type ChatTurn, type OpenedStream } from './llm.js';
+import { generateText, resilientStream, type AnswerEvent, type ChatTurn } from './llm.js';
 import {
   CANDIDATE_POOL,
   REWRITE_SYSTEM_PROMPT,
@@ -88,12 +88,15 @@ export async function prepareAnswer(input: {
   };
 }
 
-/** Starts the answer stream (primary model, OpenAI fallback before the first token). */
+/**
+ * The answer as events: primary model first; the OpenAI fallback takes over if the primary
+ * fails before its first token, or mid-answer (then a `reset` event precedes the restart).
+ */
 export function streamAnswer(
   prepared: PreparedAnswer,
   signal?: AbortSignal,
-): Promise<OpenedStream> {
-  return openStream({
+): AsyncGenerator<AnswerEvent> {
+  return resilientStream({
     system: prepared.system,
     messages: prepared.messages,
     maxOutputTokens: 4096,
