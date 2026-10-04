@@ -6,7 +6,7 @@ This phase sets up a running skeleton: an npm-workspaces monorepo (`apps/web`, `
 
 ## Files created / changed
 
-- `package.json` — root workspaces and scripts (dev, build, lint, typecheck, db:_, infra:_, inngest:dev, format)
+- `package.json` — root workspaces and scripts (`dev`, `build`, `lint`, `typecheck`, `db:*`, `infra:*`, `inngest:dev`, `format`)
 - `tsconfig.base.json` — shared strict TS config
 - `eslint.config.js` — flat ESLint config (typescript-eslint, react-hooks, react-refresh, prettier)
 - `.prettierrc.json`, `.prettierignore` — Prettier config
