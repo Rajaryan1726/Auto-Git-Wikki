@@ -119,6 +119,11 @@ chat_messages
   memory_ids (jsonb string[], default []; assistant: user memories used for the answer),
   created_at
   index (thread_id, created_at); chat_threads has index (user_id, repo_id, updated_at)
+
+llm_usage      -- per-call LLM tokens, for the daily budget (Phase 6)
+  id (bigint identity pk), user_id (fk users, cascade),
+  feature ('chat' | 'rewrite' | 'wiki' | 'memory'), model, input_tokens, output_tokens, created_at
+  index (user_id, created_at)
 ```
 
 ## Qdrant conventions
@@ -195,6 +200,17 @@ Style: radius 10–16px, 1px borders, no gradients, no emoji, inline stroke icon
 ## LLM circuit breaker
 
 - `services/circuit-breaker.ts`, used by `llm.ts` for every generation call (chat, query rewrite, wiki). A quota / rate-limit error (429, RESOURCE_EXHAUSTED) opens that provider's breaker until its retry time, clamped to 60 s – 1 h; while open, calls skip it and go straight to the next model. If every provider is open they are all tried anyway. Opening and closing are logged. In memory, per process.
+
+## Limits, security and observability (Phase 6)
+
+- **Per-user limits** (env `LIMIT_*`) and a **daily LLM token budget** (`LLM_DAILY_TOKEN_BUDGET`), checked in `services/usage.ts` BEFORE new work starts (ask, index, wiki regenerate; the wiki step and memory learning skip themselves when the budget is gone). An answer that has started is never cut off. Daily counters reset at 00:00 UTC; the chat limit is a rolling hour. Errors: 429 `LIMIT_REACHED` / `AI_BUDGET_EXHAUSTED` with a user-facing message.
+- **Usage recording**: every provider-reported usage goes to `llm_usage` from `llm.ts` (`GenerateRequest.usage`, or the async context `withUsageContext` for memory-engine calls). New LLM call sites must pass the payer.
+- **Rate limits**: `lib/rate-limit.ts` (in-memory sliding window): auth per IP; index, wiki regenerate and ask per user → 429 `RATE_LIMITED` + `Retry-After`. API JSON bodies ≤ 100 KB (Inngest 10 MB on its own route).
+- **Revoked GitHub access**: `githubFetch` clears the stored tokens when GitHub rejects a token that cannot be refreshed; `requireAuth` then answers `GITHUB_REAUTH_REQUIRED` and the error handler clears the session cookie on every route.
+- **Dev session**: `npm run dev:session` (`services/dev-session.ts`) is the only non-OAuth way to mint a session; it refuses `NODE_ENV=production` and no HTTP code imports it (tested).
+- **Security headers**: helmet (strict CSP for the JSON API); CORS only for `WEB_ORIGIN` with credentials; cookies httpOnly, SameSite=Lax, Secure in production.
+- **Data deletion**: `services/data-deletion.ts` (repo data: Qdrant points in all code collections, wiki, chats, jobs; account: everything incl. memories and `llm_usage`). Both return before/after counts.
+- **Logging**: pino (`lib/logger.ts`, `moduleLogger(name)`), request ids via pino-http (`X-Request-Id`). Log ids, counts, timings, models — never tokens, secrets, file contents, chat text or memory facts. Structured events: `index job done`, `chat answer`, `wiki run finished`.
 
 ## Engineering rules
 

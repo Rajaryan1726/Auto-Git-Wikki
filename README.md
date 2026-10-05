@@ -132,6 +132,7 @@ docs/            Phase reports; injection-test-repo (prompt-injection test fixtu
 | `npm run eval:retrieval`                    | Retrieval eval on the tuned set: hit@3 and MRR@10, dense vs re-scored (`--verbose`)                                    |
 | `npm run eval:retrieval:heldout`            | The same on the held-out set (never used for tuning)                                                                   |
 | `npm run eval:memory`                       | User-memory eval: scripted conversations + latency / memory-down checks                                                |
+| `npm run eval:injection -- <owner/repo>`    | Prompt-injection check on the test repo from `docs/injection-test-repo` (chat, wiki, memory)                           |
 | `npm run check:contrast`                    | WCAG contrast of the design tokens in both themes                                                                      |
 | `npm run dev:chunks -- <repo> <path>`       | Print the chunks of one file (`local <path>` for a file on disk; `--text`)                                             |
 | `npm run dev:search -- <repo> "<question>"` | Semantic search over a repo's last index (`--k 5`, `--text`)                                                           |

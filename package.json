@@ -29,6 +29,7 @@
     "dev:ask": "tsx apps/server/src/scripts/dev-ask.ts",
     "dev:wiki": "tsx apps/server/src/scripts/dev-wiki.ts",
     "eval:memory": "tsx apps/server/src/scripts/eval-memory.ts",
+    "eval:injection": "tsx apps/server/src/scripts/eval-injection.ts",
     "dev:session": "tsx apps/server/src/scripts/dev-session.ts",
     "check:contrast": "npm run check:contrast -w @autowiki/web"
   },
