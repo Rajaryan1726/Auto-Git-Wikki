@@ -224,7 +224,7 @@ I designed and directed this project and used [Claude Code](https://claude.com/c
 
 ## Author
 
-**Raj Aryan**: [GitHub](https://github.com/Rajaryan1726) · [Blog](https://rajaryan1726.hashnode.dev) · LinkedIn: [LinkedIn URL]
+**Raj Aryan**: [GitHub](https://github.com/Rajaryan1726) · [Blog](https://rajaryan1726.hashnode.dev) · LinkedIn: https://www.linkedin.com/in/raj-aryan-0765a231a/
 
 ## License
 
