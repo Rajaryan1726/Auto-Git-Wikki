@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { RepoSummary, WikiPageSummary, WikiResponse, WikiSource } from '@autowiki/shared';
 import { ApiRequestError } from '../../lib/api';
+import { ErrorWithUpgrade } from '../../components/error-with-upgrade';
 import { relativeTime } from '../../lib/time';
 import { buttonClass } from '../../lib/ui';
 import { sourceUrl } from '../chat/api';
@@ -126,7 +127,7 @@ function RegenerateButton({
       </button>
       {regenerate.error && (
         <span role="alert" className="text-xs text-danger">
-          {regenerate.error.message}
+          <ErrorWithUpgrade error={regenerate.error} />
         </span>
       )}
     </span>

@@ -124,6 +124,33 @@ llm_usage      -- per-call LLM tokens, for the daily budget (Phase 6)
   id (bigint identity pk), user_id (fk users, cascade),
   feature ('chat' | 'rewrite' | 'wiki' | 'memory'), model, input_tokens, output_tokens, created_at
   index (user_id, created_at)
+
+billing_plans  -- Razorpay plans created by `npm run billing:sync-plans` (Phase 8)
+  id (uuid pk), mode ('test' | 'live'), plan ('starter' | 'pro' | 'max'), amount_paise,
+  razorpay_plan_id (unique), created_at
+  unique (mode, plan, amount_paise)
+
+subscriptions
+  id (uuid pk), user_id (fk users, cascade), plan, razorpay_subscription_id (unique),
+  razorpay_plan_id, razorpay_customer_id, status (enum: created | authenticated | active |
+  pending | halted | cancelled | completed | expired), current_period_start,
+  current_period_end, cancel_at_period_end (bool), replaces_subscription_id (plan change),
+  start_at (scheduled downgrade), checkout_verified_at, ended_at,
+  last_event_at (newest webhook applied), created_at, updated_at
+  index (user_id, created_at)
+
+billing_events -- every accepted webhook (idempotency + audit); no user id, kept on account deletion
+  id (bigint identity pk), event_id (unique, x-razorpay-event-id), type,
+  razorpay_subscription_id, razorpay_payment_id, amount_paise, status,
+  period_start, period_end, event_created_at, received_at
+
+payments       -- payment history (upserted from webhooks)
+  id (uuid pk), user_id (fk, cascade), razorpay_payment_id (unique), razorpay_subscription_id,
+  plan, amount_paise, currency, status, method, paid_at, created_at, updated_at
+
+quota_events   -- plan quota ledger: one row per re-index (index / re-index / regenerate) or asked question
+  id (bigint identity pk), user_id (fk, cascade), kind ('reindex' | 'chat'), created_at
+  index (user_id, kind, created_at)
 ```
 
 ## Qdrant conventions
@@ -211,6 +238,31 @@ Style: radius 10–16px, 1px borders, no gradients, no emoji, inline stroke icon
 - **Security headers**: helmet (strict CSP for the JSON API); CORS only for `WEB_ORIGIN` with credentials; cookies httpOnly, SameSite=Lax, Secure in production.
 - **Data deletion**: `services/data-deletion.ts` (repo data: Qdrant points in all code collections, wiki, chats, jobs; account: everything incl. memories and `llm_usage`). Both return before/after counts.
 - **Logging**: pino (`lib/logger.ts`, `moduleLogger(name)`), request ids via pino-http (`X-Request-Id`). Log ids, counts, timings, models — never tokens, secrets, file contents, chat text or memory facts. Structured events: `index job done`, `chat answer`, `wiki run finished`.
+
+## Billing (Phase 8)
+
+- Razorpay Subscriptions; details, setup and going live in `docs/BILLING.md`. Plans, prices
+  (integer paise) and quotas: `PLANS` in `packages/shared/src/billing.ts` — the only source.
+  Amounts and Razorpay plan ids are decided on the server; the client sends a plan key only.
+- Pure logic in `services/billing-core.ts` (signatures, state machine, entitlement, gates; unit
+  tested); DB + flows in `services/billing.ts`; REST calls in `services/razorpay.ts`.
+- Checkout verify: `HMAC_SHA256(razorpay_payment_id + "|" + subscription_id, key_secret)`; it only
+  marks the subscription "confirming". **Webhooks are the source of truth**:
+  `/api/billing/webhook` with a raw body parser before the JSON parser, signature over the raw
+  body, idempotent on `x-razorpay-event-id` (event row + state change in one transaction),
+  out-of-order safe (status only from newer events, terminal never moves back, periods only
+  forward).
+- Access: active / pending (banner) / cancelled until period end → can work; halted, ended,
+  no plan → no new indexing, regeneration or chat (data stays readable). `COMP_GITHUB_LOGINS` →
+  Max, "Complimentary", calendar-month quotas.
+- Gates: `assertPlanAllows(user, 'reindex' | 'chat', { repoId })` BEFORE the Phase 6 limits; 402
+  `PLAN_REQUIRED` | `SUBSCRIPTION_INACTIVE` | `QUOTA_REACHED` | `REPO_SLOTS_FULL` (web shows a
+  /pricing link). Count with `recordQuota` only when work was actually created (not for an
+  already-running job, not for a chat retry). Quotas count `quota_events` since the period start.
+- Plan changes = a new subscription (Razorpay cannot change the plan of UPI / e-mandate /
+  domestic-card subscriptions): upgrade now (old cancelled when the new one activates), downgrade
+  with `start_at` = period end (old cancelled at cycle end when the new one authenticates); the
+  Inngest function `billing-retire-replaced-subscription` does the cancelling.
 
 ## Engineering rules
 

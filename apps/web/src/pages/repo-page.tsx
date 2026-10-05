@@ -41,6 +41,7 @@ import { relativeTime } from '../lib/time';
 import { buttonClass } from '../lib/ui';
 import { ConfirmDialog } from '../components/confirm-dialog';
 import { RefetchErrorBanner } from '../components/refetch-error';
+import { ErrorWithUpgrade } from '../components/error-with-upgrade';
 import { useToast } from '../components/toast-context';
 import { useDeleteRepoData } from '../features/account/api';
 import { FilesPanel } from '../features/repos/files-panel';
@@ -321,7 +322,7 @@ function IndexStatusArea({ view }: { view: IndexView }) {
           className="mt-4 flex items-start gap-2 rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger"
         >
           <CircleAlert size={18} className="mt-0.5 shrink-0" aria-hidden />
-          {view.startError.message}
+          <ErrorWithUpgrade error={view.startError} />
         </p>
       )}
       {view.active && view.hasIndex && (

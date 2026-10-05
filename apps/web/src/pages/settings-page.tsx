@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   CircleAlert,
   ExternalLink,
@@ -13,12 +14,14 @@ import {
 } from 'lucide-react';
 import type { LlmFeature, UsageResponse } from '@autowiki/shared';
 import { ConfirmDialog } from '../components/confirm-dialog';
+import { Meter } from '../components/meter';
 import { PageHeader } from '../components/page-header';
 import { RefetchErrorBanner } from '../components/refetch-error';
 import { useTheme, type ThemePreference } from '../app/theme-context';
 import { useAuth } from '../features/auth/auth-context';
 import { useDeleteAccount, useUsage } from '../features/account/api';
 import { MemorySettings } from '../features/memory/memory-settings';
+import { BillingSettings } from '../features/billing/billing-settings';
 import { dangerButtonClass } from '../lib/ui';
 
 function Section({
@@ -157,45 +160,6 @@ const FEATURE_LABEL: Record<LlmFeature, string> = {
   memory: 'Memory',
 };
 
-function Meter({
-  label,
-  used,
-  limit,
-  unit,
-}: {
-  label: string;
-  used: number;
-  limit: number;
-  unit?: string;
-}) {
-  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-  const full = used >= limit;
-  return (
-    <div>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
-        <span>{label}</span>
-        <span className={`font-mono text-xs ${full ? 'text-danger' : 'text-muted'}`}>
-          {used.toLocaleString('en-US')} / {limit.toLocaleString('en-US')}
-          {unit ? ` ${unit}` : ''}
-        </span>
-      </div>
-      <div
-        role="progressbar"
-        aria-label={label}
-        aria-valuemin={0}
-        aria-valuemax={limit}
-        aria-valuenow={Math.min(used, limit)}
-        className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-soft"
-      >
-        <div
-          className={`h-full rounded-full ${full ? 'bg-danger' : pct >= 80 ? 'bg-warning' : 'bg-accent'}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
 function UsageBody({ data }: { data: UsageResponse }) {
   const { tokens, limits } = data;
   const resets = new Date(data.resetsAt);
@@ -235,8 +199,8 @@ function UsageSection() {
     <Section
       id="usage"
       icon={Gauge}
-      title="Usage"
-      description="AI work (chat, wiki generation, memory) uses tokens from a daily budget. When it runs out, new AI work pauses until the reset; everything already indexed stays available."
+      title="Daily safety limits"
+      description="Besides your plan's monthly quotas, AI work (chat, wiki generation, memory) uses tokens from a daily budget, with a few daily safety limits. When one runs out, new work pauses until the reset; everything already indexed stays available."
     >
       <RefetchErrorBanner query={usage} what="usage" />
       {usage.isPending ? (
@@ -298,12 +262,21 @@ function DangerZone() {
 }
 
 export function SettingsPage() {
+  const { hash } = useLocation();
+  // Links such as /settings#billing: scroll once the section is rendered.
+  useEffect(() => {
+    if (hash) document.getElementById(hash.slice(1))?.scrollIntoView();
+  }, [hash]);
   return (
     <>
-      <PageHeader title="Settings" subtitle="Appearance, account, memory, usage and your data." />
+      <PageHeader
+        title="Settings"
+        subtitle="Appearance, account, billing, memory, usage and your data."
+      />
       <div className="space-y-6">
         <AppearanceSection />
         <AccountSection />
+        <BillingSettings />
         <MemorySettings />
         <UsageSection />
         <DangerZone />

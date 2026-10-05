@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
 import { UserMenu } from './user-menu';
 import { SidebarIndexing } from '../features/index-jobs/sidebar-indexing';
+import { PlanBadge } from '../features/billing/plan-badge';
 
 type NavItem = { to: string; label: string; icon: LucideIcon; end?: boolean };
 
@@ -86,6 +87,7 @@ export function Sidebar() {
             <ThemeToggle variant="full" />
             <hr className="border-border" />
             <UserMenu />
+            <PlanBadge />
           </div>
         </div>
       </div>

@@ -8,11 +8,25 @@ import { RepositoriesPage } from '../pages/repositories-page';
 import { NotFoundPage } from '../pages/placeholder-pages';
 import { OverviewPage } from '../pages/overview-page';
 import { SettingsPage } from '../pages/settings-page';
+import { PricingPage } from '../pages/pricing-page';
+import { ContactPage, PrivacyPage, RefundPolicyPage, TermsPage } from '../pages/policy-pages';
+import { PublicLayout } from '../components/public-layout';
 
 export const router = createBrowserRouter([
   {
     element: <RedirectIfAuthed />,
     children: [{ path: '/login', element: <LoginPage /> }],
+  },
+  // Public (signed in or not): pricing and the policy pages.
+  {
+    element: <PublicLayout />,
+    children: [
+      { path: '/pricing', element: <PricingPage /> },
+      { path: '/terms', element: <TermsPage /> },
+      { path: '/privacy', element: <PrivacyPage /> },
+      { path: '/refund-policy', element: <RefundPolicyPage /> },
+      { path: '/contact', element: <ContactPage /> },
+    ],
   },
   {
     element: <RequireAuth />,

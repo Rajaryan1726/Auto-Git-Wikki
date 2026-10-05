@@ -7,6 +7,7 @@ import type { ChatSource } from '@autowiki/shared';
 import { buttonClass } from '../../lib/ui';
 import { sourceUrl } from './api';
 import { CITE_PREFIX, remarkCitations } from './citations';
+import { PlansLink } from '../../components/error-with-upgrade';
 
 type SourceLink = { fullName: string; commitSha: string | null; sources: ChatSource[] };
 
@@ -171,14 +172,30 @@ export function AssistantMessage({
   );
 }
 
-export function StreamError({ message, onRetry }: { message: string; onRetry: () => void }) {
+export function StreamError({
+  message,
+  onRetry,
+  planLink = false,
+}: {
+  message: string;
+  onRetry: () => void;
+  planLink?: boolean;
+}) {
   return (
     <div
       role="alert"
       className="flex flex-wrap items-center gap-3 rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger"
     >
       <CircleAlert size={18} className="shrink-0" aria-hidden />
-      <span className="flex-1">{message}</span>
+      <span className="flex-1">
+        {message}
+        {planLink && (
+          <>
+            {' '}
+            <PlansLink />
+          </>
+        )}
+      </span>
       <button type="button" onClick={onRetry} className={buttonClass.secondary}>
         <RotateCw size={16} aria-hidden />
         Retry

@@ -29,6 +29,8 @@ import { shortSha } from '../features/index-jobs/format';
 import { useStartIndex } from '../features/index-jobs/api';
 import { useRepo, useRepos } from '../features/repos/api';
 import { ApiRequestError } from '../lib/api';
+import { ErrorWithUpgrade } from '../components/error-with-upgrade';
+import { needsPlanLink } from '../lib/billing-errors';
 import { relativeTime } from '../lib/time';
 import { buttonClass } from '../lib/ui';
 
@@ -149,7 +151,7 @@ function IndexFirst({ repo }: { repo: RepoSummary }) {
       )}
       {start.error && (
         <p role="alert" className="mt-3 text-sm text-danger">
-          {start.error.message}
+          <ErrorWithUpgrade error={start.error} />
         </p>
       )}
     </div>
@@ -283,6 +285,8 @@ type Pending = {
   commitSha: string | null;
   status: 'streaming' | 'error';
   error?: string;
+  /** Plan / quota error: show a link to the pricing page. */
+  planLink?: boolean;
   /** Id of the saved assistant message once the stream is done. */
   doneId?: string;
 };
@@ -453,7 +457,9 @@ function Conversation({
         err instanceof ApiRequestError || err instanceof Error
           ? err.message
           : 'Something went wrong';
-      setPending((p) => p && { ...p, status: 'error', error: message });
+      setPending(
+        (p) => p && { ...p, status: 'error', error: message, planLink: needsPlanLink(err) },
+      );
     } finally {
       abortRef.current = null;
       if (tid) void queryClient.invalidateQueries({ queryKey: chatKeys.threads(repo.id) });
@@ -541,6 +547,7 @@ function Conversation({
             {visible.status === 'error' && (
               <StreamError
                 message={visible.error ?? 'The answer could not be generated.'}
+                planLink={visible.planLink}
                 onRetry={() => void ask(visible.question)}
               />
             )}
