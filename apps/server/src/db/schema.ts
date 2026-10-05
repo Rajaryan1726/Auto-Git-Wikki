@@ -311,3 +311,122 @@ export const llmUsage = pgTable(
   },
   (t) => [index('llm_usage_user_created_idx').on(t.userId, t.createdAt)],
 );
+
+// ---------------------------------------------------------------- billing (Phase 8)
+
+export const subscriptionStatus = pgEnum('subscription_status', [
+  'created',
+  'authenticated',
+  'active',
+  'pending',
+  'halted',
+  'cancelled',
+  'completed',
+  'expired',
+]);
+
+/** Razorpay plans created by `npm run billing:sync-plans`, per key mode and price. */
+export const billingPlans = pgTable(
+  'billing_plans',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** 'test' or 'live', from the key id prefix. */
+    mode: text('mode').$type<'test' | 'live'>().notNull(),
+    plan: text('plan').$type<'starter' | 'pro' | 'max'>().notNull(),
+    amountPaise: integer('amount_paise').notNull(),
+    razorpayPlanId: text('razorpay_plan_id').notNull().unique(),
+    createdAt: createdAt(),
+  },
+  (t) => [unique('billing_plans_mode_plan_amount_uq').on(t.mode, t.plan, t.amountPaise)],
+);
+
+export const subscriptions = pgTable(
+  'subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    plan: text('plan').$type<'starter' | 'pro' | 'max'>().notNull(),
+    razorpaySubscriptionId: text('razorpay_subscription_id').notNull().unique(),
+    razorpayPlanId: text('razorpay_plan_id').notNull(),
+    razorpayCustomerId: text('razorpay_customer_id'),
+    status: subscriptionStatus('status').notNull().default('created'),
+    currentPeriodStart: timestamp('current_period_start', { withTimezone: true }),
+    currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
+    cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
+    /** Plan change: the Razorpay subscription this one replaces (cancelled once it runs). */
+    replacesSubscriptionId: text('replaces_subscription_id'),
+    /** Scheduled start (downgrades start when the replaced subscription's period ends). */
+    startAt: timestamp('start_at', { withTimezone: true }),
+    /** Checkout signature verified; access still waits for the webhook. */
+    checkoutVerifiedAt: timestamp('checkout_verified_at', { withTimezone: true }),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    /** created_at of the newest webhook event applied (older events don't move the status back). */
+    lastEventAt: timestamp('last_event_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('subscriptions_user_created_idx').on(t.userId, t.createdAt)],
+);
+
+/** Every webhook delivery we accepted (idempotency + audit). Only the needed fields. */
+export const billingEvents = pgTable(
+  'billing_events',
+  {
+    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    /** x-razorpay-event-id header. */
+    eventId: text('event_id').notNull().unique(),
+    type: text('type').notNull(),
+    razorpaySubscriptionId: text('razorpay_subscription_id'),
+    razorpayPaymentId: text('razorpay_payment_id'),
+    amountPaise: integer('amount_paise'),
+    /** Subscription status (subscription.*) or payment status (payment.*). */
+    status: text('status'),
+    periodStart: timestamp('period_start', { withTimezone: true }),
+    periodEnd: timestamp('period_end', { withTimezone: true }),
+    /** The event's created_at (Razorpay). */
+    eventCreatedAt: timestamp('event_created_at', { withTimezone: true }),
+    receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('billing_events_subscription_idx').on(t.razorpaySubscriptionId)],
+);
+
+/** Payment history shown in Settings (upserted from webhooks). */
+export const payments = pgTable(
+  'payments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    razorpayPaymentId: text('razorpay_payment_id').notNull().unique(),
+    razorpaySubscriptionId: text('razorpay_subscription_id'),
+    plan: text('plan').$type<'starter' | 'pro' | 'max'>(),
+    amountPaise: integer('amount_paise').notNull(),
+    currency: text('currency').notNull(),
+    status: text('status').notNull(),
+    method: text('method'),
+    paidAt: timestamp('paid_at', { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('payments_user_paid_idx').on(t.userId, t.paidAt)],
+);
+
+/**
+ * Plan quota usage ledger: one row per re-index (index / re-index / regenerate) or asked
+ * question. Separate from jobs and messages so deleting repo data never refunds quota.
+ */
+export const quotaEvents = pgTable(
+  'quota_events',
+  {
+    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<'reindex' | 'chat'>().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('quota_events_user_kind_created_idx').on(t.userId, t.kind, t.createdAt)],
+);

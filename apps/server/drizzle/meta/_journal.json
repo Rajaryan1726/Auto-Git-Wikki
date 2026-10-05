@@ -64,6 +64,13 @@
       "when": 1791184441825,
       "tag": "0008_llm_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791201883688,
+      "tag": "0009_billing",
+      "breakpoints": true
     }
   ]
 }

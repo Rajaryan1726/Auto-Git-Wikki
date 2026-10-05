@@ -31,6 +31,8 @@
     "eval:memory": "tsx apps/server/src/scripts/eval-memory.ts",
     "eval:injection": "tsx apps/server/src/scripts/eval-injection.ts",
     "dev:session": "tsx apps/server/src/scripts/dev-session.ts",
+    "billing:sync-plans": "tsx apps/server/src/scripts/billing-sync-plans.ts",
+    "billing:cost-report": "tsx apps/server/src/scripts/billing-cost-report.ts",
     "check:contrast": "npm run check:contrast -w @autowiki/web"
   },
   "devDependencies": {

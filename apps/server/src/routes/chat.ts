@@ -23,6 +23,7 @@ import {
 } from '../services/chat.js';
 import { prepareAnswer, streamAnswer, HISTORY_TURNS } from '../services/rag.js';
 import type { TokenUsage } from '../services/llm.js';
+import { assertPlanAllows, recordQuota } from '../services/billing.js';
 import { assertCanAsk } from '../services/usage.js';
 import { rateLimit } from '../lib/rate-limit.js';
 import { env } from '../lib/env.js';
@@ -129,6 +130,8 @@ threadsRouter.post('/:id/ask', askRateLimit, async (req, res) => {
   await indexedRepo(req, thread.repoId); // 409 before the stream opens
   // Hourly message limit and the daily AI budget, checked before anything is saved or
   // streamed: an answer that has started is never cut off.
+  // Plan quota (monthly chat messages, 402 → pricing) comes first.
+  await assertPlanAllows(currentUser(req), 'chat');
   await assertCanAsk(currentUser(req).id);
 
   const previous = await listMessages(thread.id);
@@ -141,6 +144,8 @@ threadsRouter.post('/:id/ask', askRateLimit, async (req, res) => {
   const userMessage = isRetry
     ? last
     : await insertMessage({ threadId: thread.id, role: 'user', content: question });
+  // One asked question = 1 (a retry of the same unanswered question is not counted again).
+  if (!isRetry) await recordQuota(currentUser(req).id, 'chat');
   if (thread.title === DEFAULT_THREAD_TITLE && !previous.some((m) => m.role === 'user')) {
     await setThreadTitle(thread.id, titleFromQuestion(question));
   }

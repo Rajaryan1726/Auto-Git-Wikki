@@ -97,7 +97,7 @@ async function countValue(q: Promise<{ n: number }[]>): Promise<number> {
 }
 
 /** Repos counted against the indexed-repo limit: indexed, or with an index running. */
-async function indexedRepoIds(userId: string): Promise<string[]> {
+export async function indexedRepoIds(userId: string): Promise<string[]> {
   const rows = await db
     .selectDistinct({ id: repositories.id })
     .from(repositories)

@@ -54,6 +54,23 @@ const envSchema = z.object({
   RATE_LIMIT_INDEX_PER_MIN: z.coerce.number().int().positive().default(10),
   RATE_LIMIT_WIKI_PER_MIN: z.coerce.number().int().positive().default(5),
   RATE_LIMIT_ASK_PER_MIN: z.coerce.number().int().positive().default(20),
+  // Billing (Phase 8): Razorpay Subscriptions. Without the keys, nobody can subscribe
+  // (complimentary users still work).
+  RAZORPAY_KEY_ID: optionalString,
+  RAZORPAY_KEY_SECRET: optionalString,
+  RAZORPAY_WEBHOOK_SECRET: optionalString,
+  /** GitHub logins (comma-separated, case-insensitive) that get the Max plan for free. */
+  COMP_GITHUB_LOGINS: z
+    .string()
+    .optional()
+    .transform((v) =>
+      (v ?? '')
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  /** Monthly billing cycles of a new subscription (Razorpay needs a finite total_count). */
+  BILLING_TOTAL_COUNT: z.coerce.number().int().min(2).max(120).default(60),
   /** pino log level. */
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   EMBEDDING_MODEL: z.string().min(1),

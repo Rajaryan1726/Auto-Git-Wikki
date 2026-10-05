@@ -6,6 +6,7 @@ import { env } from './lib/env.js';
 import { httpLogger } from './lib/logger.js';
 import { authRouter } from './routes/auth.js';
 import { accountRouter } from './routes/account.js';
+import { billingRouter, billingWebhookRouter } from './routes/billing.js';
 import { repoThreadsRouter, threadsRouter } from './routes/chat.js';
 import { healthRouter } from './routes/health.js';
 import { indexJobsRouter, repoIndexRouter } from './routes/index-jobs.js';
@@ -40,6 +41,9 @@ export function createApp(): express.Express {
   // Inngest has its own, larger body limit and is mounted before the API parser.
   app.use('/api/inngest', express.json({ limit: INNGEST_JSON_LIMIT }), inngestHandler);
 
+  // Razorpay webhooks are verified against the RAW body: mounted before the JSON parser.
+  app.use('/api/billing/webhook', billingWebhookRouter);
+
   app.use(express.json({ limit: API_JSON_LIMIT }));
   app.use(cookieParser());
 
@@ -54,6 +58,7 @@ export function createApp(): express.Express {
   app.use('/api/me', meRouter);
   app.use('/api/me', accountRouter);
   app.use('/api/threads', threadsRouter);
+  app.use('/api/billing', billingRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

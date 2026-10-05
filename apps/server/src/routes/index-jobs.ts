@@ -18,6 +18,7 @@ import {
   serializeJob,
 } from '../services/index-jobs.js';
 import { getRepoForUser } from '../services/repos.js';
+import { assertPlanAllows, recordQuota } from '../services/billing.js';
 import { assertCanIndex } from '../services/usage.js';
 import { rateLimit } from '../lib/rate-limit.js';
 import { env } from '../lib/env.js';
@@ -48,8 +49,13 @@ repoIndexRouter.post('/:id/index', indexRateLimit, async (req, res) => {
   const repoId = await ownedRepoId(req);
   // A request while a job is already active just returns it (no new job, no limit used).
   const active = await findActiveJob(repoId);
-  if (!active) await assertCanIndex(currentUser(req).id, repoId);
+  if (!active) {
+    // Plan first (repo slots + monthly re-indexes, 402 → pricing), then the safety limits.
+    await assertPlanAllows(currentUser(req), 'reindex', { repoId });
+    await assertCanIndex(currentUser(req).id, repoId);
+  }
   const { job, created } = await createIndexJob(repoId);
+  if (created) await recordQuota(currentUser(req).id, 'reindex');
 
   if (created) {
     try {

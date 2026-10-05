@@ -12,13 +12,17 @@ import {
   indexChunks,
   indexJobs,
   llmUsage,
+  payments,
+  quotaEvents,
   repositories,
+  subscriptions,
   users,
   wikiPages,
   wikiRuns,
 } from '../db/schema.js';
 import { HttpError } from '../lib/http-error.js';
 import { moduleLogger } from '../lib/logger.js';
+import { cancelAllForAccountDeletion } from './billing.js';
 import { countMemories, deleteAllMemories } from './memory.js';
 import { countRepoPointsEverywhere, deleteRepoPoints } from './qdrant.js';
 
@@ -131,7 +135,8 @@ export async function deleteRepoData(repoId: string): Promise<DeletionReport> {
 /**
  * Deletes a user and everything about them: code points of all their repos, their
  * memories (user_memories_* collection, history included), and every Postgres row
- * (repositories, jobs, wiki, chats, llm_usage and the user itself, via cascades).
+ * (repositories, jobs, wiki, chats, llm_usage, billing rows and the user, via cascades).
+ * Live Razorpay subscriptions are cancelled immediately first.
  */
 export async function deleteAccount(userId: string): Promise<DeletionReport> {
   const repoRows = await db
@@ -147,17 +152,31 @@ export async function deleteAccount(userId: string): Promise<DeletionReport> {
       db.select({ n: count() }).from(repositories).where(eq(repositories.userId, userId)),
     ),
     llmUsage: await n(db.select({ n: count() }).from(llmUsage).where(eq(llmUsage.userId, userId))),
+    subscriptions: await n(
+      db.select({ n: count() }).from(subscriptions).where(eq(subscriptions.userId, userId)),
+    ),
+    payments: await n(db.select({ n: count() }).from(payments).where(eq(payments.userId, userId))),
+    quotaEvents: await n(
+      db.select({ n: count() }).from(quotaEvents).where(eq(quotaEvents.userId, userId)),
+    ),
     users: await n(db.select({ n: count() }).from(users).where(eq(users.id, userId))),
     qdrantMemories: await countMemories(userId),
   });
   const before = await accountCounts();
 
+  // Stop billing first: if Razorpay cannot cancel, nothing is deleted (the user retries).
+  const cancelled = await cancelAllForAccountDeletion(userId);
   for (const id of repoIds) await deleteRepoPoints(id);
   await deleteAllMemories(userId);
-  // users → repositories → jobs/chunks/wiki/threads/messages, and llm_usage, all cascade.
+  // users → repositories → jobs/chunks/wiki/threads/messages, llm_usage, subscriptions,
+  // payments and quota_events all cascade. billing_events (Razorpay ids and amounts only,
+  // no user id) are kept for accounting and webhook idempotency.
   await db.delete(users).where(eq(users.id, userId));
 
   const after = await accountCounts();
-  log.info({ userId, repos: repoIds.length, before, after }, 'account deleted');
+  log.info(
+    { userId, repos: repoIds.length, cancelledSubscriptions: cancelled, before, after },
+    'account deleted',
+  );
   return { before, after };
 }

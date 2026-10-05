@@ -15,6 +15,7 @@ import {
   wikiJobFor,
 } from '../services/wiki.js';
 import { inngest } from '../inngest/client.js';
+import { assertPlanAllows, recordQuota } from '../services/billing.js';
 import { assertCanRegenerate } from '../services/usage.js';
 import { rateLimit } from '../lib/rate-limit.js';
 import { env } from '../lib/env.js';
@@ -68,8 +69,12 @@ repoWikiRouter.post('/:id/wiki/regenerate', wikiRateLimit, async (req, res) => {
       'This repository is being indexed; its wiki is generated when indexing finishes.',
     );
   }
-  if (!(await runningWikiRun(repo.id))) await assertCanRegenerate(currentUser(req).id);
+  if (!(await runningWikiRun(repo.id))) {
+    await assertPlanAllows(currentUser(req), 'reindex');
+    await assertCanRegenerate(currentUser(req).id);
+  }
   const { run, created } = await startWikiRun(repo.id, job.id, 'regenerate');
+  if (created) await recordQuota(currentUser(req).id, 'reindex');
   if (created) {
     try {
       const data: WikiRegenerateData = { runId: run.id, repoId: repo.id };
