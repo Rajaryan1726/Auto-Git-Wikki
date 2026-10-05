@@ -189,10 +189,6 @@ export async function hasBudget(userId: string, now = new Date()): Promise<boole
   return used < env.LLM_DAILY_TOKEN_BUDGET;
 }
 
-export async function assertBudget(userId: string, now = new Date()): Promise<void> {
-  if (!(await hasBudget(userId, now))) throw budgetExhausted(now);
-}
-
 /** Before a chat answer: hourly message limit + AI budget. */
 export async function assertCanAsk(userId: string, now = new Date()): Promise<void> {
   const usage = await getUsage(userId, now);

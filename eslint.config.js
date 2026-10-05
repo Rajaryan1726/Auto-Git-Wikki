@@ -6,11 +6,25 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import prettier from 'eslint-config-prettier';
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**', 'apps/server/drizzle/**'] },
+  {
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      'apps/server/drizzle/**',
+      // Fixture files for the prompt-injection test repo (not part of the app).
+      'docs/injection-test-repo/**',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['apps/server/**/*.ts', 'packages/shared/**/*.ts', '*.js', 'apps/server/*.ts'],
+    files: [
+      'apps/server/**/*.ts',
+      'packages/shared/**/*.ts',
+      '*.js',
+      'apps/server/*.ts',
+      'apps/*/scripts/**/*.mjs',
+    ],
     languageOptions: { globals: globals.node },
   },
   {

@@ -4,6 +4,7 @@ import {
   repoListQuerySchema,
   type DeletionReport,
   type RepoDetailResponse,
+  type RepoFilesResponse,
   type RepoListResponse,
   type RepoSyncResponse,
   type SyncSummary,
@@ -13,6 +14,8 @@ import { currentUser, requireAuth } from '../middleware/require-auth.js';
 import { githubFetch } from '../services/github-token.js';
 import { syncUserRepos } from '../services/repo-sync.js';
 import { deleteRepoData } from '../services/data-deletion.js';
+import { collectionNameFor, listIndexedFiles } from '../services/qdrant.js';
+import { wikiJobFor } from '../services/wiki.js';
 import { getRepoForUser, listReposForUser } from '../services/repos.js';
 import { getReposSyncedAt } from '../services/users.js';
 
@@ -85,4 +88,24 @@ reposRouter.delete('/:id/data', async (req, res) => {
   if (!repo) throw new HttpError(404, 'REPO_NOT_FOUND', 'Repository not found');
   const report: DeletionReport = await deleteRepoData(repo.id);
   res.json(report);
+});
+
+/** Indexed file paths of the repo's last successful index (from Qdrant). */
+reposRouter.get('/:id/files', async (req, res) => {
+  const user = currentUser(req);
+  const id = idSchema.safeParse(req.params.id);
+  const repo = id.success ? await getRepoForUser(user.id, id.data) : null;
+  if (!repo) throw new HttpError(404, 'REPO_NOT_FOUND', 'Repository not found');
+  const job = await wikiJobFor(repo.id);
+  if (!job?.commitSha) {
+    const empty: RepoFilesResponse = { commitSha: null, files: [] };
+    res.json(empty);
+    return;
+  }
+  const files = await listIndexedFiles(collectionNameFor(job.embeddingModel, job.embeddingDims), {
+    repoId: repo.id,
+    commitSha: job.commitSha,
+  });
+  const body: RepoFilesResponse = { commitSha: job.commitSha, files };
+  res.json(body);
 });

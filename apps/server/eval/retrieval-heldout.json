@@ -1,0 +1,80 @@
+{
+  "description": "HELD-OUT retrieval eval (Phase 6): written after re-scoring was tuned on retrieval-set.json and never used to tune anything. Same format and metrics: hit@3 = an expected file in the top 3; MRR uses the rank of the first expected file within the top 10. Paths are repo-relative at each repo's last indexed commit.",
+  "cases": [
+    {
+      "repo": "Rajaryan1726/Auto-Git-Wikki",
+      "query": "what happens when the Gemini quota is exceeded and requests fail?",
+      "expected": ["apps/server/src/services/circuit-breaker.ts", "apps/server/src/services/llm.ts"]
+    },
+    {
+      "repo": "Rajaryan1726/Auto-Git-Wikki",
+      "query": "how is the wiki outline validated?",
+      "expected": ["apps/server/src/services/wiki-content.ts"]
+    },
+    {
+      "repo": "Rajaryan1726/Auto-Git-Wikki",
+      "query": "how are expired GitHub tokens refreshed without races?",
+      "expected": ["apps/server/src/services/github-token.ts"]
+    },
+    {
+      "repo": "Rajaryan1726/Auto-Git-Wikki",
+      "query": "how is indexing progress computed for the progress bar?",
+      "expected": ["apps/server/src/services/index-steps.ts"]
+    },
+    {
+      "repo": "Rajaryan1726/Auto-Git-Wikki",
+      "query": "which files are skipped when indexing a repository?",
+      "expected": ["apps/server/src/indexing/file-filter.ts"]
+    },
+    {
+      "repo": "Rajaryan1726/NLP_PROJECT",
+      "query": "where are the LLM calls for summarization made?",
+      "expected": ["backend/llm_service.py", "backend/pipeline.py"]
+    },
+    {
+      "repo": "Rajaryan1726/NLP_PROJECT",
+      "query": "how is the input text cleaned and normalized before summarizing?",
+      "expected": ["backend/preprocessing.py"]
+    },
+    {
+      "repo": "Rajaryan1726/NLP_PROJECT",
+      "query": "where are past summaries stored in the database?",
+      "expected": ["backend/db.py"]
+    },
+    {
+      "repo": "Rajaryan1726/NLP_PROJECT",
+      "query": "how does the frontend call the backend API?",
+      "expected": ["frontend/src/lib/api.ts"]
+    },
+    {
+      "repo": "Rajaryan1726/Custom-Memory-Engine",
+      "query": "how is the context block for the tutor prompt formatted?",
+      "expected": ["src/memory/context.js"]
+    },
+    {
+      "repo": "Rajaryan1726/Custom-Memory-Engine",
+      "query": "how are memories stored and searched in Qdrant?",
+      "expected": ["src/stores/vectorStore.js"]
+    },
+    {
+      "repo": "Rajaryan1726/Custom-Memory-Engine",
+      "query": "where is the configuration validated?",
+      "expected": ["src/config/index.js"]
+    },
+    {
+      "repo": "Rajaryan1726/Advanced-RAG",
+      "query": "how are credits deducted before a query runs?",
+      "expected": ["backend/src/middleware/checkCredits.js"]
+    },
+    {
+      "repo": "Rajaryan1726/Advanced-RAG",
+      "query": "how is personally identifiable information detected in user input?",
+      "expected": ["backend/src/guardrails/input/pii-detector.js"]
+    },
+    {
+      "repo": "Rajaryan1726/Advanced-RAG",
+      "query": "how does HyDE generate a hypothetical document for retrieval?",
+      "expected": ["backend/src/query-transform/hyde.js"]
+    }
+  ]
+}

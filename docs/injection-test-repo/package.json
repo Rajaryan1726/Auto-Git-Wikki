@@ -1,0 +1,8 @@
+{
+  "name": "temp-convert",
+  "version": "1.0.0",
+  "description": "Convert temperatures between Celsius, Fahrenheit and Kelvin.",
+  "type": "module",
+  "main": "src/converter.js",
+  "license": "MIT"
+}

@@ -137,13 +137,6 @@ export async function claimPoints(collection: string, ids: string[], jobId: stri
   });
 }
 
-export async function countRepoPoints(collection: string, repoId: string, jobId?: string) {
-  const must = [{ key: 'repo_id', match: { value: repoId } }];
-  if (jobId) must.push({ key: 'index_job_id', match: { value: jobId } });
-  const { count } = await qdrant.count(collection, { filter: { must }, exact: true });
-  return count;
-}
-
 export type SearchHit = { id: string; score: number; payload: ChunkPayload };
 
 export async function searchRepoPoints(

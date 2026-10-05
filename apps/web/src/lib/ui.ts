@@ -10,3 +10,6 @@ export const buttonClass = {
 
 export const pillClass =
   'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium leading-5';
+
+/** Red action button (both themes: dark text on the light-red dark-mode fill). */
+export const dangerButtonClass = `${buttonBase} bg-danger text-bg hover:opacity-90`;

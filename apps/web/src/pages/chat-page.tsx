@@ -13,7 +13,9 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { ChatSource, RepoSummary } from '@autowiki/shared';
+import { ConfirmDialog } from '../components/confirm-dialog';
 import { PageHeader, Placeholder } from '../components/page-header';
+import { useToast } from '../components/toast-context';
 import {
   chatKeys,
   streamAsk,
@@ -169,11 +171,20 @@ function ThreadList({
 }) {
   const threads = useThreads(repoId);
   const remove = useDeleteThread(repoId);
+  const toast = useToast();
   const list = threads.data ?? [];
+  const [toDelete, setToDelete] = useState<{ id: string; title: string } | null>(null);
 
-  const del = (id: string, title: string) => {
-    if (!window.confirm(`Delete the chat “${title}”? This cannot be undone.`)) return;
-    remove.mutate(id, { onSuccess: () => id === selected && onSelect(NEW_THREAD) });
+  const confirmDelete = () => {
+    if (!toDelete) return;
+    const { id } = toDelete;
+    remove.mutate(id, {
+      onSuccess: () => {
+        setToDelete(null);
+        toast.success('Chat deleted.');
+        if (id === selected) onSelect(NEW_THREAD);
+      },
+    });
   };
 
   return (
@@ -186,7 +197,7 @@ function ThreadList({
           type="button"
           onClick={() => onSelect(NEW_THREAD)}
           disabled={disabled}
-          className={`${buttonClass.secondary} min-h-9 px-3`}
+          className={`${buttonClass.secondary} px-3`}
         >
           <Plus size={14} aria-hidden />
           New chat
@@ -197,6 +208,17 @@ function ThreadList({
           {[0, 1, 2].map((i) => (
             <div key={i} className="h-11 animate-pulse rounded-md bg-soft" />
           ))}
+        </div>
+      ) : threads.error && !threads.data ? (
+        <div role="alert" className="rounded-md bg-danger-soft px-3 py-3 text-sm text-danger">
+          <p>Could not load your chats: {threads.error.message}</p>
+          <button
+            type="button"
+            onClick={() => void threads.refetch()}
+            className={`${buttonClass.secondary} mt-2`}
+          >
+            Retry
+          </button>
         </div>
       ) : list.length === 0 ? (
         <p className="rounded-md border border-dashed border-border px-3 py-4 text-sm text-muted">
@@ -222,7 +244,7 @@ function ThreadList({
                 </button>
                 <button
                   type="button"
-                  onClick={() => del(t.id, t.title)}
+                  onClick={() => setToDelete({ id: t.id, title: t.title })}
                   disabled={disabled || remove.isPending}
                   aria-label={`Delete chat ${t.title}`}
                   title="Delete chat"
@@ -235,6 +257,17 @@ function ThreadList({
           })}
         </ul>
       )}
+      <ConfirmDialog
+        open={toDelete !== null}
+        title="Delete this chat?"
+        confirmLabel="Delete chat"
+        busy={remove.isPending}
+        error={remove.error?.message ?? null}
+        onCancel={() => setToDelete(null)}
+        onConfirm={confirmDelete}
+      >
+        “{toDelete?.title}” and all its messages will be deleted. This cannot be undone.
+      </ConfirmDialog>
     </section>
   );
 }
@@ -437,7 +470,7 @@ function Conversation({
     sources,
   });
 
-  if (threadId && messages.error) {
+  if (threadId && messages.error && !messages.data) {
     return (
       <p
         role="alert"

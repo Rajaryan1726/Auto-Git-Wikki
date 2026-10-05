@@ -20,6 +20,8 @@ const jobFields = {
   wikiPagesDone: indexJobs.wikiPagesDone,
   error: indexJobs.error,
   finishedAt: indexJobs.finishedAt,
+  startedAt: indexJobs.startedAt,
+  createdAt: indexJobs.createdAt,
 };
 
 /** Escapes LIKE wildcards so user input is matched literally. */
@@ -73,6 +75,7 @@ async function withStatus(rows: RepoRow[]): Promise<RepoSummary[]> {
     status: deriveIndexStatus(
       r.lastIndexedJobId ? lastById.get(r.lastIndexedJobId) : null,
       latestByRepo.get(r.id),
+      r.githubPushedAt,
     ),
   }));
 }

@@ -42,11 +42,6 @@ export async function getReposSyncedAt(userId: string): Promise<Date | null> {
   return row?.reposSyncedAt ?? null;
 }
 
-export async function findAuthUserById(id: string): Promise<AuthUser | null> {
-  const row = await findSessionUser(id);
-  return row ? { id: row.id, username: row.username, avatarUrl: row.avatarUrl } : null;
-}
-
 /** The session's user plus whether they still have a GitHub token (false once revoked). */
 export async function findSessionUser(
   id: string,

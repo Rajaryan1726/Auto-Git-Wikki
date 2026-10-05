@@ -8,6 +8,7 @@ import { RepoCard, RepoCardSkeleton } from '../features/repos/components';
 import { SyncNotice } from '../features/repos/sync-notice';
 import { ApiRequestError } from '../lib/api';
 import { relativeTime } from '../lib/time';
+import { RefetchErrorBanner } from '../components/refetch-error';
 import { buttonClass } from '../lib/ui';
 
 const FILTER_LABELS: Record<RepoFilter, string> = {
@@ -189,6 +190,8 @@ export function RepositoriesPage() {
           {repos.data.lastSyncedAt && <> · Last synced {relativeTime(repos.data.lastSyncedAt)}</>}
         </p>
       )}
+
+      <RefetchErrorBanner query={repos} what="repository list" />
 
       {repos.isPending ? (
         <div

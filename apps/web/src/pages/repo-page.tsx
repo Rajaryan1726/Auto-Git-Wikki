@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   BookOpen,
@@ -15,6 +15,8 @@ import {
   RefreshCw,
   SearchX,
   Sparkles,
+  Trash2,
+  TriangleAlert,
 } from 'lucide-react';
 import type { IndexJob, RepoSummary } from '@autowiki/shared';
 import {
@@ -37,6 +39,11 @@ import { repoUpdatedAt } from '../features/repos/format';
 import { ApiRequestError } from '../lib/api';
 import { relativeTime } from '../lib/time';
 import { buttonClass } from '../lib/ui';
+import { ConfirmDialog } from '../components/confirm-dialog';
+import { RefetchErrorBanner } from '../components/refetch-error';
+import { useToast } from '../components/toast-context';
+import { useDeleteRepoData } from '../features/account/api';
+import { FilesPanel } from '../features/repos/files-panel';
 import { WikiPanel } from '../features/wiki/wiki-panel';
 
 /** Everything the page needs to know about indexing, derived from repo + latest job. */
@@ -55,6 +62,7 @@ function useIndexView(repo: RepoSummary): IndexView {
   const job = useIndexJob(repo.status.latestJobId).data;
   useRefreshWhenJobEnds(job);
   const startIndex = useStartIndex(repo.id);
+  const toast = useToast();
   const active = job ? isActiveJob(job) : repo.status.state === 'indexing';
   const failed = !active && (job ? job.status === 'failed' : repo.status.state === 'failed');
   return {
@@ -63,7 +71,10 @@ function useIndexView(repo: RepoSummary): IndexView {
     hasIndex: repo.status.commitSha !== null || job?.searchable === true,
     active,
     failed,
-    start: () => startIndex.mutate(),
+    start: () =>
+      startIndex.mutate(undefined, {
+        onSuccess: () => toast.info('Indexing started.'),
+      }),
     isStarting: startIndex.isPending,
     startError: startIndex.error,
   };
@@ -178,6 +189,49 @@ function IndexedLine({ repo, job }: { repo: RepoSummary; job: IndexJob | undefin
   );
 }
 
+/** Deletes vectors, wiki, chats and jobs of this repo, after a styled confirmation. */
+function DeleteRepoData({ repo }: { repo: RepoSummary }) {
+  const [open, setOpen] = useState(false);
+  const del = useDeleteRepoData(repo.id);
+  const toast = useToast();
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={`${buttonClass.ghost} text-danger hover:text-danger`}
+      >
+        <Trash2 size={16} aria-hidden />
+        Delete repo data
+      </button>
+      <ConfirmDialog
+        open={open}
+        title={`Delete the data of ${repo.name}?`}
+        confirmLabel="Delete repo data"
+        busy={del.isPending}
+        error={del.error?.message ?? null}
+        onCancel={() => setOpen(false)}
+        onConfirm={() =>
+          del.mutate(undefined, {
+            onSuccess: (report) => {
+              setOpen(false);
+              const b = report.before;
+              toast.success(
+                `Deleted ${b.qdrantCodePoints ?? 0} vectors, ${b.wikiPages ?? 0} wiki pages, ` +
+                  `${b.chatThreads ?? 0} chats and ${b.indexJobs ?? 0} index jobs.`,
+              );
+            },
+          })
+        }
+      >
+        This removes the index (vectors), the wiki, every chat about this repository and its index
+        history. The repository stays in your list and can be indexed again. Nothing on GitHub is
+        changed.
+      </ConfirmDialog>
+    </>
+  );
+}
+
 function RepoHeader({ repo, view }: { repo: RepoSummary; view: IndexView }) {
   return (
     <section className="rounded-lg border border-border bg-surface p-5 md:p-6">
@@ -223,9 +277,28 @@ function RepoHeader({ repo, view }: { repo: RepoSummary; view: IndexView }) {
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           <RepoActions repo={repo} view={view} />
+          {!view.active && (view.hasIndex || view.job) && <DeleteRepoData repo={repo} />}
         </div>
       </div>
       {!view.active && !view.failed && <IndexedLine repo={repo} job={view.job} />}
+      {repo.status.stale && !view.active && (
+        <p
+          role="status"
+          className="mt-4 flex flex-wrap items-center gap-3 rounded-lg bg-warning-soft px-4 py-3 text-sm text-warning"
+        >
+          <TriangleAlert size={18} className="shrink-0" aria-hidden />
+          <span className="flex-1">Code changed since last index.</span>
+          <button
+            type="button"
+            onClick={view.start}
+            disabled={view.isStarting}
+            className={buttonClass.secondary}
+          >
+            <RefreshCw size={16} aria-hidden />
+            Re-index
+          </button>
+        </p>
+      )}
       {!view.hasIndex && !view.active && !view.failed && (
         <p className="mt-4 border-t border-border pt-4 text-sm text-muted">
           Not indexed yet. Index this repository to generate its wiki and chat with it.
@@ -422,11 +495,7 @@ function RepoTabs({ repo, view }: { repo: RepoSummary; view: IndexView }) {
         className="mt-4"
       >
         {active === 'wiki' && <WikiPanel repo={repo} view={view} slug={slug} />}
-        {active === 'files' && (
-          <EmptyPanel icon={FileCode2}>
-            Indexed files will be listed here after the first index.
-          </EmptyPanel>
-        )}
+        {active === 'files' && <FilesPanel repo={repo} hasIndex={view.hasIndex} />}
         {active === 'history' && <HistoryPanel repo={repo} />}
       </div>
     </section>
@@ -452,11 +521,18 @@ function HeaderSkeleton() {
   );
 }
 
-function RepoView({ repo }: { repo: RepoSummary }) {
+function RepoView({
+  repo,
+  query,
+}: {
+  repo: RepoSummary;
+  query: Parameters<typeof RefetchErrorBanner>[0]['query'];
+}) {
   const view = useIndexView(repo);
   return (
     <>
       <Breadcrumb name={repo.name} />
+      <RefetchErrorBanner query={query} what="repository" />
       <RepoHeader repo={repo} view={view} />
       <IndexStatusArea view={view} />
       <RepoTabs repo={repo} view={view} />
@@ -477,7 +553,7 @@ export function RepoPage() {
     );
   }
 
-  if (repo.error) {
+  if (repo.error && !repo.data) {
     const notFound = repo.error instanceof ApiRequestError && repo.error.status === 404;
     return (
       <>
@@ -503,5 +579,5 @@ export function RepoPage() {
     );
   }
 
-  return <RepoView repo={repo.data} />;
+  return <RepoView repo={repo.data!} query={repo} />;
 }

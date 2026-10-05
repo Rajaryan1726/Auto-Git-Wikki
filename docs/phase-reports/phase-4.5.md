@@ -2,9 +2,9 @@
 
 ## Summary
 
-AutoWiki now remembers facts about the **user** (experience level, explanation style, goals, what they're working on) across chats and repos, and uses them to tailor answers. It uses your own engine, [Custom-Memory-Engine](https://github.com/Rajaryan1726/Custom-Memory-Engine), as an **unmodified dependency pinned to commit `0bd0bf3`** behind one adapter (`services/memory.ts`). The engine's chat and embedding clients are injected, so it runs on our `llm.ts` (fallback + circuit breaker), our embedder, and a separate Qdrant collection.
+AutoWiki now remembers facts about the **user** (experience level, explanation style, goals, what they're working on) across chats and repos, and uses them to tailor answers. It uses your own engine, [Custom-Memory-Engine](https://github.com/Rajaryan1726/Custom-Memory-Engine), as an **unmodified dependency** behind one adapter (`services/memory.ts`), now pinned to **v0.2.0, commit `08d7140`** (first integrated at `0bd0bf3`; see "Engine update (v0.2.0)" at the end). The engine's chat and embedding clients are injected, so it runs on our `llm.ts` (fallback + circuit breaker), our embedder, and a separate Qdrant collection.
 
-Memories are learned in the background, only from the user's own redacted messages. They're looked up in parallel with retrieval and add **0 ms** in all 8 measured chats that used memories. The Settings page lets you view, delete and clear memories, and turn memory off. Eval: **6 of 6 required cases pass in the final run, but case b passed in only 1 of 5 runs** because of engine behaviour (details and recommended engine changes below).
+Memories are learned in the background, only from the user's own redacted messages. They're looked up in parallel with retrieval and add **0 ms** in all 8 measured chats that used memories. The Settings page lets you view, delete and clear memories, and turn memory off. Eval: **on engine v0.2.0, all 7 cases passed in all 5 runs (case b 5/5)**. On the original v0.1.1 pin, case b passed only 1 of 5 runs; the engine changes recommended below fixed that, and the sections describing v0.1.1 are kept as the history.
 
 ## Files created / changed
 
@@ -77,7 +77,7 @@ In the app:
 
 ## Acceptance criteria
 
-- **All eval cases pass** — **FAIL (b is unstable)**. The final run passed **7/7** (the 6 required cases plus my extra latency case). Across the 5 runs I made, cases a, c, d, e and f passed every time, but **b passed only once**. It depends on how the engine's extractor phrases and categorises the fact; see the case b table. I did not change the engine, as instructed; the fixes are listed under "Recommended engine changes".
+- **All eval cases pass** — **PASS on v0.2.0** (5/5 runs, see "Engine update (v0.2.0)"); on the original v0.1.1 pin it was **FAIL (b is unstable)**: The final run passed **7/7** (the 6 required cases plus my extra latency case). Across the 5 runs I made, cases a, c, d, e and f passed every time, but **b passed only once**. It depends on how the engine's extractor phrases and categorises the fact; see the case b table. I did not change the engine, as instructed; the fixes are listed under "Recommended engine changes".
 - **Chat latency with memory adds no more than ~1 s, and chat works if the memory service is down** — **PASS**.
   - In all 8 real chats that used memories (2–4 each) the server logged **0 ms added**: the lookup always finished while retrieval was still running (memory-off chats: lookup 1–4 ms).
   - The limit counts from the end of retrieval, so memory can add at most `MEMORY_RECALL_TIMEOUT_MS` (800 ms).

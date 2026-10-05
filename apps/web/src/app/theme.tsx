@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { ThemeContext, type Theme } from './theme-context';
+import { ThemeContext, type Theme, type ThemePreference } from './theme-context';
 
 // Keep in sync with the inline script in index.html.
 const STORAGE_KEY = 'autowiki-theme';
@@ -40,17 +40,28 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => media.removeEventListener('change', onChange);
   }, []);
 
-  const toggleTheme = useCallback(() => {
-    setTheme((current) => {
-      const next: Theme = current === 'dark' ? 'light' : 'dark';
-      try {
-        localStorage.setItem(STORAGE_KEY, next);
-      } catch {
-        // Storage unavailable (private mode); the toggle still works for this session.
-      }
-      return next;
-    });
+  const [preference, setPreferenceState] = useState<ThemePreference>(
+    () => readStoredTheme() ?? 'system',
+  );
+
+  const setPreference = useCallback((next: ThemePreference) => {
+    try {
+      if (next === 'system') localStorage.removeItem(STORAGE_KEY);
+      else localStorage.setItem(STORAGE_KEY, next);
+    } catch {
+      // Storage unavailable (private mode); the choice still applies for this session.
+    }
+    setPreferenceState(next);
+    setTheme(next === 'system' ? systemTheme() : next);
   }, []);
 
-  return <ThemeContext.Provider value={{ theme, toggleTheme }}>{children}</ThemeContext.Provider>;
+  const toggleTheme = useCallback(() => {
+    setPreference(theme === 'dark' ? 'light' : 'dark');
+  }, [theme, setPreference]);
+
+  return (
+    <ThemeContext.Provider value={{ theme, preference, toggleTheme, setPreference }}>
+      {children}
+    </ThemeContext.Provider>
+  );
 }

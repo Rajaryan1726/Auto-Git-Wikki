@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Globe, Lock } from 'lucide-react';
+import { Globe, Lock, TriangleAlert } from 'lucide-react';
 import type { RepoIndexStatus, RepoSummary } from '@autowiki/shared';
 import { languageColor } from '../../lib/languages';
 import { relativeTime } from '../../lib/time';
@@ -96,6 +96,12 @@ export function RepoCard({ repo }: { repo: RepoSummary }) {
           <StatusBadge status={repo.status} />
         </div>
         {repo.status.state === 'indexing' && <IndexProgress progress={repo.status.progress ?? 0} />}
+        {repo.status.stale && repo.status.state !== 'indexing' && (
+          <p className="flex items-center gap-1.5 text-xs text-warning">
+            <TriangleAlert size={13} aria-hidden className="shrink-0" />
+            Code changed since last index
+          </p>
+        )}
       </div>
     </Link>
   );

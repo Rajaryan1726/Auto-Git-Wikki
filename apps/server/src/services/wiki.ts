@@ -17,6 +17,7 @@ import {
   type WikiRunStats,
 } from '../db/schema.js';
 import { isSearchableJob } from './index-jobs.js';
+import { isStale } from './repo-status.js';
 import { generateText, type ChatTurn, type TokenUsage } from './llm.js';
 import { collectionNameFor, fileChunks, listIndexedFiles } from './qdrant.js';
 import { CANDIDATE_POOL, buildContext, rankHits } from './rag-context.js';
@@ -590,7 +591,6 @@ export async function getWikiState(repoId: string): Promise<WikiState> {
   const latest = runs[0] ?? null;
   const doneRun = runs.find((r) => r.status === 'done') ?? null;
   const shown = latest?.status === 'running' ? latest : (doneRun ?? latest);
-  const indexedAt = job.startedAt ?? job.createdAt;
   return {
     doneRun,
     status: {
@@ -601,7 +601,7 @@ export async function getWikiState(repoId: string): Promise<WikiState> {
       pagesDone: shown?.pagesDone ?? 0,
       error: latest?.status === 'failed' ? latest.error : null,
       generatedAt: doneRun?.finishedAt?.toISOString() ?? null,
-      stale: pushedAt !== null && pushedAt.getTime() > indexedAt.getTime(),
+      stale: isStale(pushedAt, job),
     },
   };
 }

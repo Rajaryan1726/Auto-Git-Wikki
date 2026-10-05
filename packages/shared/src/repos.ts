@@ -25,6 +25,8 @@ export const repoIndexStatusSchema = z.object({
   latestJobId: z.string().nullable(),
   /** Set while a job is queued or running. */
   activeJobId: z.string().nullable(),
+  /** The repo was pushed to after the last successful index started. */
+  stale: z.boolean(),
 });
 export type RepoIndexStatus = z.infer<typeof repoIndexStatusSchema>;
 
@@ -83,3 +85,10 @@ export type RepoSyncResponse = z.infer<typeof repoSyncResponseSchema>;
 
 export const repoDetailResponseSchema = z.object({ repo: repoSummarySchema });
 export type RepoDetailResponse = z.infer<typeof repoDetailResponseSchema>;
+
+/** Indexed file paths of the last successful index. */
+export const repoFilesResponseSchema = z.object({
+  commitSha: z.string().nullable(),
+  files: z.array(z.string()),
+});
+export type RepoFilesResponse = z.infer<typeof repoFilesResponseSchema>;

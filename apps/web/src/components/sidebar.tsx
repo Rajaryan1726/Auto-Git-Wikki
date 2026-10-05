@@ -1,5 +1,6 @@
+import { useState, type MouseEvent } from 'react';
 import { NavLink } from 'react-router-dom';
-import { FolderGit2, LayoutDashboard, MessageSquare, Settings } from 'lucide-react';
+import { FolderGit2, LayoutDashboard, Menu, MessageSquare, Settings, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
 import { UserMenu } from './user-menu';
@@ -22,37 +23,71 @@ function navClass({ isActive }: { isActive: boolean }): string {
     : `${base} text-muted hover:bg-soft hover:text-text`;
 }
 
-export function Sidebar() {
+function Logo() {
   return (
-    <aside className="flex flex-col gap-4 border-b border-border bg-surface p-4 md:sticky md:top-0 md:h-screen md:w-64 md:shrink-0 md:overflow-y-auto md:border-r md:border-b-0">
-      <div className="flex items-center justify-between gap-2">
-        <NavLink to="/" className="flex min-h-11 items-center gap-2 rounded-md px-1">
-          <span className="flex h-8 w-8 items-center justify-center rounded-sm bg-accent font-heading text-base font-bold text-on-accent">
-            A
-          </span>
-          <span className="font-heading text-lg font-semibold">AutoWiki</span>
-        </NavLink>
-      </div>
+    <NavLink to="/" className="flex min-h-11 items-center gap-2 rounded-md px-1">
+      <span className="flex h-8 w-8 items-center justify-center rounded-sm bg-accent font-heading text-base font-bold text-on-accent">
+        A
+      </span>
+      <span className="font-heading text-lg font-semibold">AutoWiki</span>
+    </NavLink>
+  );
+}
 
-      <nav aria-label="Main">
-        <ul className="flex gap-1 overflow-x-auto md:flex-col">
-          {NAV.map(({ to, label, icon: Icon, end }) => (
-            <li key={to} className="shrink-0">
-              <NavLink to={to} end={end} className={navClass}>
-                <Icon size={18} aria-hidden />
-                {label}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
-      </nav>
+/**
+ * Desktop (≥ 768 px): a fixed sidebar. Mobile: a compact top bar; the menu button opens
+ * the same navigation, indexing status, theme and account below it, so pages are not
+ * pushed down by the full sidebar.
+ */
+export function Sidebar() {
+  const [open, setOpen] = useState(false);
 
-      <SidebarIndexing />
+  return (
+    <aside className="sticky top-0 z-30 border-b border-border bg-surface md:h-screen md:w-64 md:shrink-0 md:overflow-y-auto md:border-r md:border-b-0">
+      <div className="flex h-full flex-col gap-4 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <Logo />
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            aria-controls="app-menu"
+            aria-label={open ? 'Close menu' : 'Open menu'}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-border bg-raised text-muted hover:text-text md:hidden"
+          >
+            {open ? <X size={20} aria-hidden /> : <Menu size={20} aria-hidden />}
+          </button>
+        </div>
 
-      <div className="flex flex-col gap-3 border-t border-border pt-4 md:mt-auto">
-        <ThemeToggle variant="full" />
-        <hr className="border-border" />
-        <UserMenu />
+        <div
+          id="app-menu"
+          // Close the mobile menu once a link in it is followed.
+          onClick={(e: MouseEvent) => {
+            if ((e.target as HTMLElement).closest('a')) setOpen(false);
+          }}
+          className={`${open ? 'flex' : 'hidden'} max-h-[calc(100dvh-5rem)] flex-col gap-4 overflow-y-auto md:flex md:max-h-none md:flex-1 md:overflow-visible`}
+        >
+          <nav aria-label="Main">
+            <ul className="flex flex-col gap-1">
+              {NAV.map(({ to, label, icon: Icon, end }) => (
+                <li key={to}>
+                  <NavLink to={to} end={end} className={navClass}>
+                    <Icon size={18} aria-hidden />
+                    {label}
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </nav>
+
+          <SidebarIndexing />
+
+          <div className="flex flex-col gap-3 border-t border-border pt-4 md:mt-auto">
+            <ThemeToggle variant="full" />
+            <hr className="border-border" />
+            <UserMenu />
+          </div>
+        </div>
       </div>
     </aside>
   );

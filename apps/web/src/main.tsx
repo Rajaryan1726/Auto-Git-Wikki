@@ -5,6 +5,7 @@ import { RouterProvider } from 'react-router-dom';
 import { ThemeProvider } from './app/theme';
 import { router } from './app/router';
 import { AuthProvider } from './features/auth/auth-provider';
+import { ToastProvider } from './components/toast';
 import './styles/index.css';
 
 // Session-ending errors (401, GITHUB_REAUTH_REQUIRED) are handled in AuthProvider.
@@ -21,9 +22,11 @@ createRoot(root).render(
   <StrictMode>
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <RouterProvider router={router} />
-        </AuthProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <RouterProvider router={router} />
+          </AuthProvider>
+        </ToastProvider>
       </QueryClientProvider>
     </ThemeProvider>
   </StrictMode>,

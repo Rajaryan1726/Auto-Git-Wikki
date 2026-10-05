@@ -25,10 +25,12 @@
     "dev:chunks": "tsx apps/server/src/scripts/dev-chunks.ts",
     "dev:search": "tsx apps/server/src/scripts/dev-search.ts",
     "eval:retrieval": "tsx apps/server/src/scripts/eval-retrieval.ts",
+    "eval:retrieval:heldout": "tsx apps/server/src/scripts/eval-retrieval.ts --set apps/server/eval/retrieval-heldout.json",
     "dev:ask": "tsx apps/server/src/scripts/dev-ask.ts",
     "dev:wiki": "tsx apps/server/src/scripts/dev-wiki.ts",
     "eval:memory": "tsx apps/server/src/scripts/eval-memory.ts",
-    "dev:session": "tsx apps/server/src/scripts/dev-session.ts"
+    "dev:session": "tsx apps/server/src/scripts/dev-session.ts",
+    "check:contrast": "npm run check:contrast -w @autowiki/web"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

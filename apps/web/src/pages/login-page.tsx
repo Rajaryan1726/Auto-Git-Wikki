@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom';
-import { CircleAlert } from 'lucide-react';
+import { CircleAlert, CircleCheck } from 'lucide-react';
 import type { LoginErrorCode } from '@autowiki/shared';
 import { ThemeToggle } from '../components/theme-toggle';
 import { useAuth } from '../features/auth/auth-context';
@@ -31,6 +31,7 @@ export function LoginPage() {
   const { signInUrl } = useAuth();
   const [params] = useSearchParams();
   const message = errorMessage(params.get('error'));
+  const accountDeleted = params.get('notice') === 'account_deleted';
 
   return (
     <div className="relative flex min-h-screen items-center justify-center px-4 py-10">
@@ -50,6 +51,15 @@ export function LoginPage() {
         </p>
 
         <div aria-live="polite">
+          {accountDeleted && (
+            <p
+              role="status"
+              className="mt-5 flex gap-2 rounded-md bg-success-soft px-3 py-2.5 text-sm text-success"
+            >
+              <CircleCheck size={18} className="mt-px shrink-0" aria-hidden />
+              Your account and all of its data were deleted.
+            </p>
+          )}
           {message && (
             <p
               role="alert"

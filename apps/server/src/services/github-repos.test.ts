@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseNextLink, rateLimitError } from './github-api.js';
 import { listUserRepos, parseGithubRepo, parseSsoPartialOrgs } from './github-repos.js';
-import { deriveIndexStatus, type JobRow } from './repo-status.js';
+import { deriveIndexStatus, isStale, type JobRow } from './repo-status.js';
 
 function json(body: unknown, init: { status?: number; headers?: Record<string, string> } = {}) {
   return new Response(JSON.stringify(body), {
@@ -146,7 +146,22 @@ const job = (over: Partial<JobRow>): JobRow => ({
   filesDone: 10,
   error: null,
   finishedAt: new Date('2026-02-01T00:00:00Z'),
+  startedAt: new Date('2026-01-31T23:50:00Z'),
+  createdAt: new Date('2026-01-31T23:49:00Z'),
   ...over,
+});
+
+test('isStale: pushed after the last successful index started', () => {
+  const indexed = job({});
+  assert.equal(isStale(new Date('2026-02-02T00:00:00Z'), indexed), true);
+  assert.equal(isStale(new Date('2026-01-31T23:00:00Z'), indexed), false);
+  assert.equal(isStale(null, indexed), false);
+  assert.equal(isStale(new Date('2026-02-02T00:00:00Z'), null), false);
+  // Falls back to createdAt for a job that never recorded startedAt.
+  assert.equal(isStale(new Date('2026-01-31T23:49:30Z'), job({ startedAt: null })), true);
+  const status = deriveIndexStatus(indexed, indexed, new Date('2026-02-02T00:00:00Z'));
+  assert.equal(status.stale, true);
+  assert.equal(deriveIndexStatus(indexed, indexed).stale, false);
 });
 
 test('deriveIndexStatus covers every state', () => {

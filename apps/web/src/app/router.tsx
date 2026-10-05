@@ -5,7 +5,9 @@ import { ChatPage } from '../pages/chat-page';
 import { LoginPage } from '../pages/login-page';
 import { RepoPage } from '../pages/repo-page';
 import { RepositoriesPage } from '../pages/repositories-page';
-import { NotFoundPage, OverviewPage, SettingsPage } from '../pages/placeholder-pages';
+import { NotFoundPage } from '../pages/placeholder-pages';
+import { OverviewPage } from '../pages/overview-page';
+import { SettingsPage } from '../pages/settings-page';
 
 export const router = createBrowserRouter([
   {

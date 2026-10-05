@@ -1,5 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { Brain, CircleAlert, LoaderCircle, Trash2, TriangleAlert } from 'lucide-react';
+import { useState } from 'react';
+import { Brain, CircleAlert, LoaderCircle, Trash2 } from 'lucide-react';
+import { ConfirmDialog } from '../../components/confirm-dialog';
+import { RefetchErrorBanner } from '../../components/refetch-error';
+import { useToast } from '../../components/toast-context';
 import type { MemoryCategory, UserMemory } from '@autowiki/shared';
 import { relativeTime } from '../../lib/time';
 import { buttonClass, pillClass } from '../../lib/ui';
@@ -42,63 +45,9 @@ function Toggle({
   );
 }
 
-function ConfirmForgetDialog({
-  open,
-  onCancel,
-  onConfirm,
-  busy,
-}: {
-  open: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-  busy: boolean;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const d = ref.current;
-    if (!d) return;
-    if (open && !d.open) d.showModal();
-    if (!open && d.open) d.close();
-  }, [open]);
-  return (
-    <dialog
-      ref={ref}
-      onClose={onCancel}
-      aria-labelledby="forget-title"
-      className="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-lg border border-border bg-surface p-6 text-text backdrop:bg-black/50"
-    >
-      <h2 id="forget-title" className="flex items-center gap-2 text-lg font-semibold">
-        <TriangleAlert size={20} className="text-danger" aria-hidden />
-        Forget everything?
-      </h2>
-      <p className="mt-2 text-sm text-muted">
-        AutoWiki will permanently delete everything it remembers about you, including the history of
-        each memory. This cannot be undone.
-      </p>
-      <div className="mt-6 flex flex-wrap justify-end gap-2">
-        <button type="button" onClick={onCancel} className={buttonClass.secondary} autoFocus>
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={onConfirm}
-          disabled={busy}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-danger px-4 text-sm font-medium text-bg transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy ? (
-            <LoaderCircle size={16} className="animate-spin" aria-hidden />
-          ) : (
-            <Trash2 size={16} aria-hidden />
-          )}
-          Forget everything
-        </button>
-      </div>
-    </dialog>
-  );
-}
-
 function MemoryRow({ memory }: { memory: UserMemory }) {
   const del = useDeleteMemory();
+  const toast = useToast();
   return (
     <li className="flex items-start gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
@@ -119,7 +68,12 @@ function MemoryRow({ memory }: { memory: UserMemory }) {
       </div>
       <button
         type="button"
-        onClick={() => del.mutate(memory.id)}
+        onClick={() =>
+          del.mutate(memory.id, {
+            onSuccess: () => toast.success('Forgotten.'),
+            onError: (err) => toast.error(`Could not forget it: ${err.message}`),
+          })
+        }
         disabled={del.isPending}
         aria-label={`Forget: ${memory.text}`}
         title="Forget this"
@@ -140,6 +94,7 @@ export function MemorySettings() {
   const memories = useMemories();
   const setEnabled = useSetMemoryEnabled();
   const forget = useForgetEverything();
+  const toast = useToast();
 
   return (
     <section
@@ -163,7 +118,11 @@ export function MemorySettings() {
           <Toggle
             checked={memories.data.enabled}
             disabled={setEnabled.isPending}
-            onChange={(v) => setEnabled.mutate(v)}
+            onChange={(v) =>
+              setEnabled.mutate(v, {
+                onSuccess: () => toast.success(v ? 'Memory turned on.' : 'Memory turned off.'),
+              })
+            }
           />
         )}
       </div>
@@ -180,31 +139,34 @@ export function MemorySettings() {
       )}
 
       <div className="mt-5">
+        <RefetchErrorBanner query={memories} what="memories" />
         {memories.isPending ? (
           <div className="space-y-2" role="status" aria-label="Loading memories">
             {[0, 1, 2].map((i) => (
               <div key={i} className="h-14 animate-pulse rounded-md bg-soft" />
             ))}
           </div>
-        ) : memories.error ? (
+        ) : memories.error && !memories.data ? (
           <p role="alert" className="flex items-center gap-2 text-sm text-danger">
             <CircleAlert size={16} aria-hidden />
             Could not load memories: {memories.error.message}
           </p>
-        ) : memories.data.memories.length === 0 ? (
+        ) : memories.data!.memories.length === 0 ? (
           <p className="rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-muted">
             Nothing remembered yet.
           </p>
         ) : (
           <>
             <ul className="divide-y divide-border overflow-hidden rounded-md border border-border bg-raised/40">
-              {memories.data.memories.map((m) => (
+              {memories.data!.memories.map((m) => (
                 <MemoryRow key={m.id} memory={m} />
               ))}
             </ul>
             <div className="mt-4 flex justify-end">
               <ForgetEverything
-                onConfirm={() => forget.mutateAsync()}
+                onConfirm={() =>
+                  forget.mutateAsync().then(() => toast.success('Everything was forgotten.'))
+                }
                 busy={forget.isPending}
                 error={forget.error?.message ?? null}
               />
@@ -228,27 +190,26 @@ function ForgetEverything({
   const [open, setOpen] = useState(false);
   return (
     <>
-      <span className="inline-flex flex-col items-end gap-1">
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className={`${buttonClass.secondary} text-danger`}
-        >
-          <Trash2 size={16} aria-hidden />
-          Forget everything
-        </button>
-        {error && (
-          <span role="alert" className="text-xs text-danger">
-            {error}
-          </span>
-        )}
-      </span>
-      <ConfirmForgetDialog
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={`${buttonClass.secondary} text-danger`}
+      >
+        <Trash2 size={16} aria-hidden />
+        Forget everything
+      </button>
+      <ConfirmDialog
         open={open}
+        title="Forget everything?"
+        confirmLabel="Forget everything"
         busy={busy}
+        error={error}
         onCancel={() => setOpen(false)}
         onConfirm={() => void onConfirm().then(() => setOpen(false))}
-      />
+      >
+        AutoWiki will permanently delete everything it remembers about you, including the history of
+        each memory. This cannot be undone.
+      </ConfirmDialog>
     </>
   );
 }

@@ -16,7 +16,7 @@ import { inngestHandler } from './inngest/index.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 
 /** JSON bodies of the app's own endpoints are small (largest: a 4,000-character question). */
-export const API_JSON_LIMIT = '100kb';
+const API_JSON_LIMIT = '100kb';
 /** Inngest step state can be large. */
 const INNGEST_JSON_LIMIT = '10mb';
 

@@ -14,7 +14,22 @@ export type JobRow = {
   filesDone: number;
   error: string | null;
   finishedAt: Date | null;
+  startedAt: Date | null;
+  createdAt: Date;
 };
+
+/**
+ * "Code changed since last index": the repo was pushed to after the last successful
+ * index started (that job resolved the commit at its start). Shared by the repo cards,
+ * the repo page and the wiki tab.
+ */
+export function isStale(
+  pushedAt: Date | null | undefined,
+  indexedJob: Pick<JobRow, 'startedAt' | 'createdAt'> | null | undefined,
+): boolean {
+  if (!pushedAt || !indexedJob) return false;
+  return pushedAt.getTime() > (indexedJob.startedAt ?? indexedJob.createdAt).getTime();
+}
 
 /**
  * Derives the badge state from the last successful job and the most recent job:
@@ -23,6 +38,7 @@ export type JobRow = {
 export function deriveIndexStatus(
   lastIndexed: JobRow | null | undefined,
   latest: JobRow | null | undefined,
+  pushedAt: Date | null = null,
 ): RepoIndexStatus {
   // Legacy 3A jobs (chunks_total null) finished without vectors and never count.
   const done =
@@ -33,6 +49,7 @@ export function deriveIndexStatus(
     lastIndexedAt: done?.finishedAt?.toISOString() ?? null,
     latestJobId: latest?.id ?? null,
     activeJobId: active ? latest.id : null,
+    stale: isStale(pushedAt, done),
   };
 
   if (active) {
