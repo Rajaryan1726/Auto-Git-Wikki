@@ -1,74 +1,67 @@
-# AutoWiki (Auto-Git-Wikki)
+<div align="center">
 
-Sign in with GitHub, pick a repository, index it, and get:
+# AutoWiki
 
-- an **AI-generated wiki** (overview, architecture, modules, setup) with source links, and
-- a **chat** that answers questions about the code with file + line citations, personalised
-  with what it remembers about you.
+**Turn any GitHub repository into an AI-written wiki you can chat with.**
 
-[CLAUDE.md](CLAUDE.md) is the source of truth for stack, schema, conventions and design system;
-[docs/phase-reports](docs/phase-reports) records how each part was built and verified.
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)](https://expressjs.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Qdrant](https://img.shields.io/badge/Qdrant-vectors-DC244C?logo=qdrant&logoColor=white)](https://qdrant.tech/)
+[![Inngest](https://img.shields.io/badge/Inngest-jobs-111111)](https://www.inngest.com/)
+[![OpenAI](https://img.shields.io/badge/OpenAI-embeddings-412991)](https://openai.com/api/)
+[![Razorpay](https://img.shields.io/badge/Razorpay-subscriptions-0C2451?logo=razorpay&logoColor=white)](https://razorpay.com/)
 
-## Run it from scratch
+<img src="docs/images/chat-demo.gif" alt="Asking AutoWiki how GitHub tokens are stored; the answer streams in with numbered citations and source chips" width="900">
 
-### 1. Requirements
+</div>
 
-- **Node.js 20.12+** (the server uses `process.loadEnvFile`) and npm 10+
-- **Docker** (PostgreSQL 16 and Qdrant run in containers)
-- A **GitHub OAuth App** — GitHub → Settings → Developer settings → OAuth Apps → New:
-  - Homepage URL: `http://localhost:5173`
-  - Authorization callback URL: `http://localhost:4000/api/auth/github/callback`
-- API keys: **OpenAI** (embeddings + fallback generation) and, optionally, **Gemini**
-  (primary generation; when it is missing or over quota, OpenAI answers instead)
+## What it does
 
-### 2. Install and configure
+- **Sign in with GitHub** and see all your repositories, public and private (OAuth, tokens encrypted with AES-256-GCM).
+- **Index a repo in the background**: files are parsed with tree-sitter, embedded and stored in Qdrant, with a live step-by-step progress view.
+- **Get an AI-written wiki**: overview, architecture, setup and module pages, generated from the indexed code with source links.
+- **Chat with the code**: streamed answers grounded in retrieved code, with `[n]` citations that link to exact files and line ranges at the indexed commit.
+- **Personal memory and plans**: AutoWiki remembers how you like explanations (only from your own messages, and you can view or delete everything), and monthly plans run on Razorpay Subscriptions.
 
-```bash
-npm install
-cp .env.example .env
-```
+## Screenshots
 
-Fill in `.env` (see [Environment variables](#environment-variables)): at least
-`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `SESSION_JWT_SECRET`, `TOKEN_ENCRYPTION_KEY` and
-`OPENAI_API_KEY`. Generate the two secrets with:
+| Repositories                                                                             | Wiki                                                                         |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| ![Repositories dashboard with status badges](docs/images/dashboard-light.png)            | ![Wiki tab with page list and a code block](docs/images/repo-wiki-light.png) |
+| **Chat with citations**                                                                  | **Live indexing**                                                            |
+| ![Chat answer with highlighted code and source chips](docs/images/chat-light.png)        | ![Indexing progress with the step list](docs/images/indexing-light.png)      |
+| **Settings: memory and usage**                                                           | **Plans**                                                                    |
+| ![Settings with remembered preferences and usage meters](docs/images/settings-light.png) | ![Pricing page with three plans](docs/images/pricing-light.png)              |
 
-```bash
-node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-```
+<details>
+<summary><b>Dark mode</b></summary>
 
-### 3. Start infrastructure and the database schema
+| Repositories                                       | Wiki                                             |
+| -------------------------------------------------- | ------------------------------------------------ |
+| ![Dashboard, dark](docs/images/dashboard-dark.png) | ![Wiki, dark](docs/images/repo-wiki-dark.png)    |
+| ![Chat, dark](docs/images/chat-dark.png)           | ![Indexing, dark](docs/images/indexing-dark.png) |
+| ![Settings, dark](docs/images/settings-dark.png)   | ![Pricing, dark](docs/images/pricing-dark.png)   |
 
-```bash
-npm run infra:up
-npm run db:migrate
-```
+</details>
 
-If port 5432 or 6333 is taken, change `POSTGRES_HOST_PORT` / `QDRANT_HOST_PORT` in `.env`
-and update `DATABASE_URL` / `QDRANT_URL` to match.
+<details>
+<summary><b>Mobile (390 px)</b></summary>
 
-### 4. Run — **both** processes, in two terminals
+| Dashboard                                                                                  | Chat                                                                             |
+| ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| <img src="docs/images/mobile-dashboard-light.png" alt="Mobile dashboard" width="300">      | <img src="docs/images/mobile-chat-light.png" alt="Mobile chat" width="300">      |
+| <img src="docs/images/mobile-dashboard-dark.png" alt="Mobile dashboard, dark" width="300"> | <img src="docs/images/mobile-chat-dark.png" alt="Mobile chat, dark" width="300"> |
 
-```bash
-npm run dev
-```
+</details>
 
-```bash
-npm run inngest:dev
-```
+## How it works
 
-`npm run dev` serves the web app (http://localhost:5173) and the API (http://localhost:4000).
-`npm run inngest:dev` runs the background-job worker (dashboard at http://localhost:8288).
-**Indexing, wiki generation and memory learning need both.** Without Inngest, an index job
-stays queued and expires after 10 minutes with a hint.
+![AutoWiki architecture](docs/images/architecture.png)
 
-Open http://localhost:5173 and sign in with GitHub. Indexing and chat need a plan: add your
-GitHub login to `COMP_GITHUB_LOGINS` in `.env` for a free (complimentary) Max plan, or set up
-Razorpay test mode as described in [docs/BILLING.md](docs/BILLING.md) and subscribe on
-`/pricing`. Then press **Index repository** on any repo and open its **Wiki** tab or
-**Chat with repo**.
-
-## Architecture
+<details>
+<summary>Mermaid source</summary>
 
 ```mermaid
 flowchart LR
@@ -106,102 +99,133 @@ flowchart LR
   RZP -. "signed webhooks" .-> ROUTES
 ```
 
-- **Indexing** (`index-repo`): resolve commit → list + filter files → fetch and chunk with
-  tree-sitter → embed and upsert to Qdrant (unchanged chunks reuse vectors) → clean up old
-  points → generate the wiki → finalize. Progress steps come from the server.
-- **Chat** (`POST /api/threads/:id/ask`, SSE): rewrite follow-ups → `searchRepo` (the repo's
-  own embedding model) → keyword re-scoring → context → stream with model fallback. User
-  memories are looked up in parallel and only tailor tone and depth.
-- **Wiki**: outline (strict JSON, validated) → one page per entry from the same retrieval
-  path → file-path hallucination check → saved per run; regenerate without re-embedding.
-- **Memory**: [Custom-Memory-Engine](https://github.com/Rajaryan1726/Custom-Memory-Engine)
-  (pinned dependency) learns facts about the _user_ from their own redacted messages only.
-- **Limits**: per-user limits and a daily AI token budget (`llm_usage`), rate limits per
-  route, structured logs (pino) with request ids.
+</details>
 
+From a GitHub repo to a cited answer:
+
+1. **List files.** The GitHub Trees API returns the whole tree at the latest commit in one call.
+2. **Filter.** Skips vendored and build folders, lockfiles, secrets (`.env*` except templates), binary or minified files and anything over 512 KB.
+3. **Chunk by syntax.** web-tree-sitter splits code in about a dozen languages (TypeScript, JavaScript, Python, Go, Rust, Java, C#, …) into functions, classes and blocks; other files such as Markdown and YAML are split at blank lines.
+4. **Embed.** OpenAI `text-embedding-3-small` at 768 dimensions. On re-index, chunks whose text didn't change reuse their vectors.
+5. **Store.** Qdrant, one collection per embedding model and size, with payload indexes on repo, commit and job.
+6. **Retrieve.** Follow-up questions are rewritten into standalone queries. The top 30 dense hits are re-scored with keyword boosts on path, symbol and text (weighted by rarity, with a penalty for docs), then merged into at most 10 context blocks.
+7. **Answer.** The model answers only from the numbered context and streams over SSE with `[n]` citations. Each citation maps to a file and line range at the indexed commit.
+8. **Write the wiki.** A validated 5–12 page outline, then one page at a time from the same retrieval path. A hallucination check flags file paths that don't exist in the index and retries the page once.
+
+## Engineering highlights
+
+- **Idempotent indexing.** Qdrant point ids are UUID v5 of repo + commit + path + line, so retries overwrite instead of duplicating. Older points are removed only after every embed batch of the new job succeeds.
+- **One embedding model per job.** The model and dimensions are fixed when a job starts, and each model gets its own collection. Queries always use the model of the repo's last successful index, never the current setting.
+- **Single-use GitHub refresh tokens, safely.** Refreshes run under a `SELECT … FOR UPDATE` row lock and re-read the token after acquiring it. A concurrency test with a fake GitHub that rejects reused tokens proves it.
+- **Streaming with mid-answer fallback.** SSE events `sources → token* → done`. If the primary model fails, even mid-answer, the fallback takes over (a `reset` event clears the partial text). A per-provider circuit breaker skips a provider that is over quota.
+- **Prompt-injection defences.** Repository text is wrapped as untrusted data that the model must not follow. Memory learns only from the user's own messages (redacted), never from code, wiki or assistant text.
+- **Cost control.** Plan quotas, a daily per-user token budget recorded per LLM call, global safety limits, and request rate limits. Checks run before work starts, so an answer is never cut off mid-stream.
+- **Payments done carefully.** Razorpay webhooks are the source of truth. Signatures are checked over the raw body, deliveries are idempotent on the event id, out-of-order events are handled, and amounts are decided on the server only.
+- **Real data deletion.** "Delete repo data" and "Delete my account" remove rows in Postgres and vectors in Qdrant (memories included). Both report counts before and after.
+
+## Evaluation
+
+All numbers come from the [phase reports](docs/phase-reports).
+
+**Retrieval** (`npm run eval:retrieval`, `npm run eval:retrieval:heldout`):
+
+| Query set                                                      | Ranking   | hit@3  | MRR@10 |
+| -------------------------------------------------------------- | --------- | ------ | ------ |
+| Tuned set: 13 queries, **used to tune the re-scoring weights** | dense     | 92.3%  | 0.637  |
+|                                                                | re-scored | 100.0% | 0.808  |
+| Held-out set: 15 new queries, never used for tuning            | dense     | 86.7%  | 0.739  |
+|                                                                | re-scored | 86.7%  | 0.809  |
+
+On unseen questions, re-scoring improves ranking (MRR) but not hit@3. The two misses are vocabulary mismatches, which is why hybrid BM25 search is on the roadmap.
+
+**Wiki:**
+
+- 9 of 9 spot-checked claims (3 per repo, 3 repos) matched the code at the indexed commit.
+- Across 49 generated pages, the file-path check flagged 5 pages (10%). All 5 were fixed by one retry, so no link had to be removed.
+
+**Memory** (`npm run eval:memory`): 7 cases × 5 runs, **35/35 passed**. The cases cover storing a skill level, updating it instead of duplicating it, ignoring code and secrets, ignoring a README that says "the user is an admin", the off switch, and latency.
+
+**Tests:** 200 server tests (unit + Postgres integration). Typecheck, lint and build are clean.
+
+## My memory engine
+
+The user memory runs on my own library, [Custom-Memory-Engine](https://github.com/Rajaryan1726/Custom-Memory-Engine). It extracts facts, decides whether to add, update or delete them, and stores them in Qdrant.
+
+AutoWiki's integration eval found a real weakness. Updating a skill level ("Actually, I'm comfortable with TypeScript now") passed only 1 of 5 runs, because the previous message was being re-extracted. The fixes went into the engine as v0.2.0: context-only messages, plus injected `chat` / `embed` functions and a logger. That case now passes 5 of 5.
+
+## Tech stack
+
+| Area     | Technology                                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------------- |
+| Frontend | React 18, Vite, React Router, TanStack Query, Tailwind CSS v4, react-markdown + highlight.js            |
+| Backend  | Node.js 20, Express 5, zod, pino, helmet                                                                |
+| Data     | PostgreSQL 16 with Drizzle ORM, Qdrant                                                                  |
+| AI       | Gemini (primary) and OpenAI (fallback) for generation, OpenAI `text-embedding-3-small`, web-tree-sitter |
+| Jobs     | Inngest (step functions, retries, concurrency keys)                                                     |
+| Payments | Razorpay Subscriptions and Checkout                                                                     |
+| Tooling  | npm workspaces, strict TypeScript, ESLint, Prettier, `node:test`, Playwright, Docker Compose            |
+
+## Quick start
+
+You need Node.js 20.12+, Docker, a GitHub OAuth App and an OpenAI API key.
+
+```bash
+git clone https://github.com/Rajaryan1726/Auto-Git-Wikki.git
+cd Auto-Git-Wikki
+npm install
+cp .env.example .env        # fill in the GitHub, session, encryption and OpenAI values
+npm run infra:up            # PostgreSQL + Qdrant
+npm run db:migrate
 ```
-apps/web         React app: pages, features (repos, index-jobs, wiki, chat, memory, account)
-apps/server      Express API: routes, services, db (Drizzle), inngest, scripts, eval
-packages/shared  Types and zod schemas used by both
-docs/            Phase reports; injection-test-repo (prompt-injection test fixtures)
+
+Then run both processes, each in its own terminal:
+
+```bash
+npm run dev                 # web on http://localhost:5173, API on http://localhost:4000
 ```
 
-## Scripts
+```bash
+npm run inngest:dev         # background jobs, dashboard on http://localhost:8288
+```
 
-| Script                                      | What it does                                                                                                           |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `npm run dev`                               | Shared types (watch) + API server + web app                                                                            |
-| `npm run inngest:dev`                       | Inngest dev server (background jobs); **run alongside `npm run dev`**                                                  |
-| `npm run infra:up` / `infra:down`           | Start (and wait for) / stop Postgres + Qdrant; data volumes are kept                                                   |
-| `npm run db:migrate`                        | Apply pending migrations                                                                                               |
-| `npm run db:generate`                       | Generate a Drizzle migration from the schema                                                                           |
-| `npm run build`                             | Build shared, server and web                                                                                           |
-| `npm run typecheck`                         | Type-check every workspace                                                                                             |
-| `npm run lint` / `format` / `format:check`  | ESLint / Prettier write / Prettier check                                                                               |
-| `npm test`                                  | Server unit + integration tests (integration tests need `infra:up`)                                                    |
-| `npm run eval:retrieval`                    | Retrieval eval on the tuned set: hit@3 and MRR@10, dense vs re-scored (`--verbose`)                                    |
-| `npm run eval:retrieval:heldout`            | The same on the held-out set (never used for tuning)                                                                   |
-| `npm run eval:memory`                       | User-memory eval: scripted conversations + latency / memory-down checks                                                |
-| `npm run eval:injection -- <owner/repo>`    | Prompt-injection check on the test repo from `docs/injection-test-repo` (chat, wiki, memory)                           |
-| `npm run check:contrast`                    | WCAG contrast of the design tokens in both themes                                                                      |
-| `npm run dev:chunks -- <repo> <path>`       | Print the chunks of one file (`local <path>` for a file on disk; `--text`)                                             |
-| `npm run dev:search -- <repo> "<question>"` | Semantic search over a repo's last index (`--k 5`, `--text`)                                                           |
-| `npm run dev:ask -- <repo> "<question>"`    | One question through the chat pipeline (`--follow-up "<earlier>"`)                                                     |
-| `npm run dev:wiki -- <repo>`                | Wiki outline and per-page stats (`--regenerate`, `--page <slug>`)                                                      |
-| `npm run dev:session -- <github-username>`  | **Local development only**: a session cookie without OAuth (`--out <file>`); refuses to run with `NODE_ENV=production` |
-| `npm run billing:sync-plans`                | Create the Starter / Pro / Max plans in Razorpay (mode of the key) if missing; idempotent                              |
-| `npm run billing:cost-report`               | Average / max actual cost per user per billing period, by plan, vs price and Razorpay fee                              |
-| `npm run billing:simulate -- <sub> <event>` | **Local development only**: send a signed Razorpay webhook to the local API (pending, halted, charged…)                |
+Indexing and chat need a plan. For local use, add your GitHub login to `COMP_GITHUB_LOGINS` in `.env`.
 
-`<repo>` accepts a repo id, `owner/name` or the name.
+The full setup, every npm script and every environment variable are in **[docs/SETUP.md](docs/SETUP.md)**. Payments are covered in [docs/BILLING.md](docs/BILLING.md).
 
-## Environment variables
+## Project structure
 
-All configuration comes from the root `.env` ([.env.example](.env.example) lists every
-variable with comments). Required ones are marked **R**.
+```text
+apps/
+  web/               React app: pages, features (repos, wiki, chat, memory, billing), components
+  server/            Express API
+    src/routes/      HTTP endpoints (zod-validated)
+    src/services/    GitHub, retrieval, LLM, wiki, memory, billing, usage
+    src/indexing/    file filter, tree-sitter chunking, point ids
+    src/inngest/     background functions (index, wiki, memory, billing)
+    drizzle/         SQL migrations
+    eval/            retrieval eval sets
+packages/
+  shared/            zod schemas and types used by web and server
+docs/                setup, billing, phase reports, images
+scripts/             screenshot capture
+```
 
-| Variable                                                                                                                   | Default                             | Purpose                                                            |
-| -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------ |
-| `NODE_ENV`                                                                                                                 | `development`                       | `production` enables secure cookies, trusted proxy, JSON logs      |
-| `PORT`                                                                                                                     | `4000`                              | API port                                                           |
-| `WEB_ORIGIN` **R**                                                                                                         |                                     | Web app origin (CORS with credentials)                             |
-| `SERVER_URL` **R**                                                                                                         |                                     | Public API URL (OAuth callback)                                    |
-| `VITE_API_URL`                                                                                                             | `http://localhost:4000`             | API URL used by the browser                                        |
-| `POSTGRES_HOST_PORT`, `QDRANT_HOST_PORT`                                                                                   | `5432`, `6333`                      | Host ports for docker-compose                                      |
-| `DATABASE_URL` **R**                                                                                                       |                                     | Postgres connection string                                         |
-| `QDRANT_URL` **R**, `QDRANT_API_KEY`                                                                                       |                                     | Qdrant (key only for secured instances)                            |
-| `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`                                                                                 | empty                               | Only for Inngest Cloud (empty = local dev server)                  |
-| `GITHUB_CLIENT_ID` **R**, `GITHUB_CLIENT_SECRET` **R**                                                                     |                                     | GitHub OAuth App                                                   |
-| `SESSION_JWT_SECRET` **R**                                                                                                 |                                     | ≥ 32 characters; signs the session cookie                          |
-| `TOKEN_ENCRYPTION_KEY` **R**                                                                                               |                                     | 32 bytes base64; AES-256-GCM for GitHub tokens                     |
-| `GEMINI_API_KEY`, `OPENAI_API_KEY`                                                                                         |                                     | Model providers (OpenAI needed for the default embeddings)         |
-| `GEN_MODEL_PRIMARY` **R**, `GEN_MODEL_FALLBACK` **R**                                                                      |                                     | Generation models (Gemini, then OpenAI)                            |
-| `EMBEDDING_MODEL` **R**, `EMBEDDING_DIMS` **R**                                                                            |                                     | Embedding model; provider follows the id                           |
-| `EMBED_CONCURRENCY`                                                                                                        | `2`                                 | Parallel embedding calls per process                               |
-| `GEMINI_EMBED_MAX_RPM` / `_BATCH_SIZE` / `_MAX_TPM`                                                                        | `90` / `100` / `0`                  | Gemini embedding throttle                                          |
-| `OPENAI_EMBED_MAX_RPM` / `_MAX_TPM` / `_BATCH_SIZE`                                                                        | `500` / `900000` / `128`            | OpenAI embedding throttle                                          |
-| `MEMORY_RECALL_TIMEOUT_MS`                                                                                                 | `800`                               | Max time memory may add to an answer (after retrieval)             |
-| `MEMORY_RECALL_LIMIT`                                                                                                      | `5`                                 | Question-relevant memories per answer (plus preferences)           |
-| `LIMIT_MAX_INDEXED_REPOS`                                                                                                  | `10`                                | Repos a user can have indexed at once                              |
-| `LIMIT_INDEX_JOBS_PER_DAY`                                                                                                 | `20`                                | Index jobs per user per UTC day                                    |
-| `LIMIT_WIKI_REGENERATIONS_PER_DAY`                                                                                         | `10`                                | Wiki regenerations per user per UTC day                            |
-| `LIMIT_CHAT_MESSAGES_PER_HOUR`                                                                                             | `60`                                | Chat questions per user in a rolling hour                          |
-| `LIMIT_MAX_REPO_FILES`                                                                                                     | `2000`                              | Indexable files per repository                                     |
-| `LLM_DAILY_TOKEN_BUDGET`                                                                                                   | `1000000`                           | Input + output tokens per user per UTC day                         |
-| `RATE_LIMIT_AUTH_PER_MIN` / `_INDEX_` / `_WIKI_` / `_ASK_`                                                                 | `20` / `10` / `5` / `20`            | Requests per minute (auth per IP, others per user)                 |
-| `LOG_LEVEL`                                                                                                                | `info`                              | pino log level                                                     |
-| `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`                                                                                   |                                     | Razorpay API keys (`rzp_test_…` in test mode); see docs/BILLING.md |
-| `RAZORPAY_WEBHOOK_SECRET`                                                                                                  |                                     | Secret of the Razorpay webhook (`/api/billing/webhook`)            |
-| `COMP_GITHUB_LOGINS`                                                                                                       | empty                               | GitHub logins with a free Max plan ("Complimentary")               |
-| `BILLING_TOTAL_COUNT`                                                                                                      | `60`                                | Monthly cycles of a new Razorpay subscription                      |
-| `BILLING_USD_INR`, `LLM_PRICES_USD_PER_MTOK`, `EMBED_PRICE_USD_PER_MTOK`, `EMBED_TOKENS_PER_CHUNK`, `RAZORPAY_FEE_PERCENT` | `88`, `{"*":…}`, `0.02`, `350`, `2` | Only for `billing:cost-report`                                     |
+## Roadmap
 
-## Troubleshooting
+- Hybrid search (BM25 + dense) for vocabulary mismatches
+- Production deployment
+- Automatic re-index on push (GitHub webhooks)
+- Cross-links between wiki pages
+- GitHub App installation instead of an OAuth App
 
-- **"The indexing job never started"** — `npm run inngest:dev` is not running.
-- **Answers say "Answered by gpt-…" although Gemini is primary** — Gemini failed or is over
-  quota; the circuit breaker routes to OpenAI for up to an hour (logged).
-- **Signed out with "GitHub access was revoked"** — the app's access was removed on GitHub
-  (or the token expired); sign in again.
-- **"You have used today's AI budget"** — the daily token budget is used up; it resets at
-  00:00 UTC. Indexed code, wikis and chats stay available.
+## Built with
+
+I designed and directed this project and used [Claude Code](https://claude.com/claude-code) as an AI pair programmer. Each phase's goals, decisions and verification are written up in [docs/phase-reports](docs/phase-reports).
+
+## Author
+
+**Raj Aryan**: [GitHub](https://github.com/Rajaryan1726) · [Blog](https://rajaryan1726.hashnode.dev) · LinkedIn: [LinkedIn URL]
+
+## License
+
+© 2026 Raj Aryan. All rights reserved. The code is published for portfolio and reference purposes. No license is granted to use, copy, modify or distribute it without permission.
