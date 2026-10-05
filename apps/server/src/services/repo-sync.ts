@@ -13,6 +13,10 @@ import {
 } from './github-repos.js';
 import { deleteRepoPoints } from './qdrant.js';
 
+import { moduleLogger } from '../lib/logger.js';
+
+const log = moduleLogger('repo-sync');
+
 const UPSERT_CHUNK = 200;
 
 export type RepoSyncDeps = {
@@ -123,9 +127,9 @@ export async function syncUserRepos(userId: string, deps: RepoSyncDeps): Promise
   // Vector cleanup is best effort; orphaned points are filtered by repo_id anyway.
   for (const repoId of toDelete) {
     await deletePoints(repoId).catch((err: unknown) =>
-      console.warn(
-        `[qdrant] could not delete points for repo ${repoId}:`,
-        err instanceof Error ? err.message : err,
+      log.warn(
+        { repoId, err: err instanceof Error ? err.message : String(err) },
+        'could not delete points for repo',
       ),
     );
   }
@@ -141,7 +145,7 @@ export async function syncUserRepos(userId: string, deps: RepoSyncDeps): Promise
     grantAccessUrl: grantAccessUrl(),
     syncedAt: now.toISOString(),
   };
-  console.log(
+  log.info(
     `[sync] user ${userId}: ${summary.total} repos (+${added} ~${updated} -${summary.removed})` +
       (summary.skipped.count ? `, skipped ${summary.skipped.count}` : '') +
       (removalsApplied ? '' : ', removals skipped (partial fetch)'),

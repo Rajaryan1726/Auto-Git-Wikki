@@ -11,6 +11,10 @@ import {
 } from '../../services/wiki.js';
 import { inngest } from '../client.js';
 
+import { moduleLogger } from '../../lib/logger.js';
+
+const log = moduleLogger('wiki');
+
 export const WIKI_REGENERATE_EVENT = 'repo/wiki.regenerate.requested';
 export type WikiRegenerateData = { runId: string; repoId: string };
 const eventDataSchema = z.object({ runId: z.uuid(), repoId: z.uuid() });
@@ -71,7 +75,7 @@ export async function runWikiSteps(
   } catch (err) {
     const error = message(err);
     await step.run('wiki-failed', () => failRun(runId, `Wiki generation failed: ${error}`));
-    console.warn(`[wiki] run ${runId} failed: ${error}`);
+    log.warn(`[wiki] run ${runId} failed: ${error}`);
     return { status: 'failed', error };
   }
 }

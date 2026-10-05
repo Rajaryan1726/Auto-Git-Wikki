@@ -22,6 +22,10 @@ import {
   titleFromQuestion,
 } from '../services/chat.js';
 import { prepareAnswer, streamAnswer, HISTORY_TURNS } from '../services/rag.js';
+import type { TokenUsage } from '../services/llm.js';
+import { assertCanAsk } from '../services/usage.js';
+import { rateLimit } from '../lib/rate-limit.js';
+import { env } from '../lib/env.js';
 import { aboutUserSection } from '../services/memory-context.js';
 import { recallForQuestion } from '../services/memory.js';
 import { inngest } from '../inngest/client.js';
@@ -30,6 +34,10 @@ import {
   type ChatTurnCompletedData,
 } from '../inngest/functions/memory.js';
 import { getRepoForUser } from '../services/repos.js';
+
+import { moduleLogger } from '../lib/logger.js';
+
+const log = moduleLogger('chat');
 
 const idSchema = z.uuid();
 
@@ -87,6 +95,8 @@ repoThreadsRouter.get('/:id/threads', async (req, res) => {
 export const threadsRouter = Router();
 threadsRouter.use(requireAuth);
 
+const askRateLimit = rateLimit({ name: 'ask', limit: env.RATE_LIMIT_ASK_PER_MIN });
+
 threadsRouter.get('/:id/messages', async (req, res) => {
   const { thread } = await ownedThread(req);
   const messages = await listMessages(thread.id);
@@ -113,10 +123,13 @@ function send(res: Response, e: ChatStreamEvent): void {
  * answer), added as an "About the user" system-prompt section, and the finished turn is
  * sent to the background memory function (not for stopped or failed answers).
  */
-threadsRouter.post('/:id/ask', async (req, res) => {
+threadsRouter.post('/:id/ask', askRateLimit, async (req, res) => {
   const { thread, repo: threadRepo } = await ownedThread(req);
   const { question } = askBodySchema.parse(req.body);
   await indexedRepo(req, thread.repoId); // 409 before the stream opens
+  // Hourly message limit and the daily AI budget, checked before anything is saved or
+  // streamed: an answer that has started is never cut off.
+  await assertCanAsk(currentUser(req).id);
 
   const previous = await listMessages(thread.id);
   // Retry after an error: reuse the unanswered user message instead of duplicating it.
@@ -158,6 +171,7 @@ threadsRouter.post('/:id/ask', async (req, res) => {
       repoFullName: threadRepo.fullName,
       question,
       history,
+      userId,
     }).finally(() => (retrievalMs = Date.now() - started));
     // Memory runs alongside retrieval and may take at most MEMORY_RECALL_TIMEOUT_MS more.
     const [prepared, recall] = await Promise.all([
@@ -177,7 +191,12 @@ threadsRouter.post('/:id/ask', async (req, res) => {
     });
 
     const failed: string[] = [];
-    for await (const e of streamAnswer(prepared, abort.signal)) {
+    const tokens = { input: 0, output: 0 };
+    const onUsage = (u: TokenUsage) => {
+      tokens.input += u.inputTokens;
+      tokens.output += u.outputTokens;
+    };
+    for await (const e of streamAnswer(prepared, abort.signal, userId, onUsage)) {
       if (e.type === 'model') {
         model = e.model;
         failed.push(...e.skipped.map((m) => `${m} (breaker open)`));
@@ -205,13 +224,25 @@ threadsRouter.post('/:id/ask', async (req, res) => {
       commitSha,
       memoryIds,
     });
-    console.log(
-      `[chat] thread ${thread.id}: answered by ${model}` +
-        ` | memory: ${memoryIds.length} used, lookup ${recall.ms} ms (retrieval ${retrievalMs} ms, added ${memoryWaitMs} ms)` +
-        (recall.error ? ` (skipped: ${recall.error})` : '') +
-        (failed.length ? ` (fallback after ${failed.join(', ')})` : '') +
-        ` | query: ${prepared.rewritten ? `rewritten -> "${prepared.searchQuery}"` : 'as asked'}` +
-        ` | ${sources.length} sources`,
+    // Per answer: model, latency, tokens, retrieval and memory timings (no question text).
+    log.info(
+      {
+        threadId: thread.id,
+        messageId: saved.id,
+        model,
+        fallbackFrom: failed,
+        latencyMs: Date.now() - started,
+        retrievalMs,
+        inputTokens: tokens.input || null,
+        outputTokens: tokens.output || null,
+        sources: sources.length,
+        rewritten: prepared.rewritten,
+        memoryUsed: memoryIds.length,
+        memoryLookupMs: recall.ms,
+        memoryAddedMs: memoryWaitMs,
+        ...(recall.error ? { memorySkipped: recall.error } : {}),
+      },
+      'chat answer',
     );
     send(res, {
       event: 'done',
@@ -221,9 +252,9 @@ threadsRouter.post('/:id/ask', async (req, res) => {
       // Fire and forget: learning about the user never delays or affects the answer.
       const data: ChatTurnCompletedData = { userId, threadId: thread.id, messageId: saved.id };
       inngest.send({ name: CHAT_TURN_COMPLETED_EVENT, data }).catch((err: unknown) => {
-        console.warn(
-          '[memory] could not enqueue the turn:',
-          err instanceof Error ? err.message : 'unknown error',
+        log.warn(
+          { err: err instanceof Error ? err.message : 'unknown error' },
+          '[memory] could not enqueue the turn',
         );
       });
     }
@@ -240,10 +271,10 @@ threadsRouter.post('/:id/ask', async (req, res) => {
           commitSha,
         });
       }
-      console.log(`[chat] thread ${thread.id}: stopped by the client`);
+      log.info(`[chat] thread ${thread.id}: stopped by the client`);
     } else {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      console.error(`[chat] thread ${thread.id}: answer failed: ${message}`);
+      log.error(`[chat] thread ${thread.id}: answer failed: ${message}`);
       const code = err instanceof HttpError ? err.code : 'ANSWER_FAILED';
       send(res, {
         event: 'error',

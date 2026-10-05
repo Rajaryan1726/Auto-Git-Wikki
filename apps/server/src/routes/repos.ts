@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import {
   repoListQuerySchema,
+  type DeletionReport,
   type RepoDetailResponse,
   type RepoListResponse,
   type RepoSyncResponse,
@@ -11,6 +12,7 @@ import { HttpError } from '../lib/http-error.js';
 import { currentUser, requireAuth } from '../middleware/require-auth.js';
 import { githubFetch } from '../services/github-token.js';
 import { syncUserRepos } from '../services/repo-sync.js';
+import { deleteRepoData } from '../services/data-deletion.js';
 import { getRepoForUser, listReposForUser } from '../services/repos.js';
 import { getReposSyncedAt } from '../services/users.js';
 
@@ -70,4 +72,17 @@ reposRouter.get('/:id', async (req, res) => {
   if (!repo) throw new HttpError(404, 'REPO_NOT_FOUND', 'Repository not found');
   const body: RepoDetailResponse = { repo };
   res.json(body);
+});
+
+/**
+ * Deletes everything derived from the repo (vectors, wiki, chats, index jobs); the repo
+ * stays in the list as "Not indexed". Responds with before/after counts.
+ */
+reposRouter.delete('/:id/data', async (req, res) => {
+  const user = currentUser(req);
+  const id = idSchema.safeParse(req.params.id);
+  const repo = id.success ? await getRepoForUser(user.id, id.data) : null;
+  if (!repo) throw new HttpError(404, 'REPO_NOT_FOUND', 'Repository not found');
+  const report: DeletionReport = await deleteRepoData(repo.id);
+  res.json(report);
 });

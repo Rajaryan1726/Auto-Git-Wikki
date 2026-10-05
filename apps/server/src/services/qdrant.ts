@@ -1,6 +1,10 @@
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { env } from '../lib/env.js';
 
+import { moduleLogger } from '../lib/logger.js';
+
+const log = moduleLogger('qdrant');
+
 export const qdrant = new QdrantClient({
   url: env.QDRANT_URL,
   apiKey: env.QDRANT_API_KEY,
@@ -52,7 +56,7 @@ export async function ensureCollection(name: string, dims: number): Promise<void
   if (!exists) {
     try {
       await qdrant.createCollection(name, { vectors: { size: dims, distance: 'Cosine' } });
-      console.log(`[qdrant] created collection ${name}`);
+      log.info(`[qdrant] created collection ${name}`);
     } catch (err) {
       // Another process may have created it at the same moment.
       if (!(await qdrant.collectionExists(name)).exists) throw err;
@@ -71,7 +75,7 @@ export async function ensureCollection(name: string, dims: number): Promise<void
       field_schema: 'keyword',
       wait: true,
     });
-    console.log(`[qdrant] created payload index ${name}.${field}`);
+    log.info(`[qdrant] created payload index ${name}.${field}`);
   }
   ensured.add(name);
 }
@@ -231,10 +235,25 @@ export async function deleteRepoPoints(repoId: string): Promise<void> {
   for (const { name } of collections) {
     if (!name.startsWith(COLLECTION_PREFIX)) continue;
     await qdrant.delete(name, {
-      wait: false,
+      wait: true,
       filter: { must: [{ key: 'repo_id', match: { value: repoId } }] },
     });
   }
+}
+
+/** A repo's points in every code collection (for deletion checks). */
+export async function countRepoPointsEverywhere(repoId: string): Promise<number> {
+  const { collections } = await qdrant.getCollections();
+  let total = 0;
+  for (const { name } of collections) {
+    if (!name.startsWith(COLLECTION_PREFIX)) continue;
+    const { count } = await qdrant.count(name, {
+      filter: { must: [{ key: 'repo_id', match: { value: repoId } }] },
+      exact: true,
+    });
+    total += count;
+  }
+  return total;
 }
 
 /**

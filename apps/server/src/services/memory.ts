@@ -35,6 +35,11 @@ import {
 } from './memory-context.js';
 import { collectionNameFor } from './qdrant.js';
 import { parseJsonObject } from './wiki-content.js';
+import { hasBudget, withUsageContext } from './usage.js';
+
+import { moduleLogger } from '../lib/logger.js';
+
+const log = moduleLogger('memory');
 
 /** Preferences are always used (they shape every answer), up to this many. */
 const MAX_PREFERENCES = 5;
@@ -65,14 +70,17 @@ function engineEmbed(): EngineEmbedFn {
 }
 
 /** The engine's logger: its message (fact-free by contract) plus counts of the details. */
-export const engineLogger: EngineLogger = {
-  warn(message, details) {
-    const counts = summarizeLogDetails(details);
-    console.warn(
-      `[memory-engine] ${message}${Object.keys(counts).length ? ` ${JSON.stringify(counts)}` : ''}`,
-    );
-  },
-};
+export function createEngineLogger(
+  sink: (fields: { details: Record<string, number> }, message: string) => void,
+): EngineLogger {
+  return {
+    warn(message, details) {
+      sink({ details: summarizeLogDetails(details) }, `engine: ${message}`);
+    },
+  };
+}
+
+export const engineLogger = createEngineLogger((fields, message) => log.warn(fields, message));
 
 let engine: MemoryEngine | null = null;
 
@@ -108,13 +116,13 @@ export function setMemoryEngineForTests(stub: MemoryEngine | null): void {
 export async function warmUpMemory(): Promise<void> {
   try {
     await getEngine().getAll({ userId: 'warm-up' });
-    console.log(
+    log.info(
       `[memory] ready (collection ${memoryCollectionName(env.EMBEDDING_MODEL, env.EMBEDDING_DIMS)})`,
     );
   } catch (err) {
-    console.warn(
-      '[memory] warm-up failed (chat works without memory):',
-      err instanceof Error ? err.message : err,
+    log.warn(
+      { err: err instanceof Error ? err.message : err },
+      '[memory] warm-up failed (chat works without memory)',
     );
   }
 }
@@ -137,7 +145,7 @@ export async function setMemoryEnabled(userId: string, enabled: boolean): Promis
 // ---------------------------------------------------------------- write
 
 export type RememberResult =
-  | { status: 'disabled' | 'nothing_to_learn' }
+  | { status: 'disabled' | 'nothing_to_learn' | 'budget_exhausted' }
   | { status: 'done'; events: Record<string, number>; ids: string[] };
 
 /**
@@ -151,13 +159,17 @@ export async function rememberTurn(input: {
   metadata?: Record<string, unknown>;
 }): Promise<RememberResult> {
   if (!(await isMemoryEnabled(input.userId))) return { status: 'disabled' };
+  // Learning is optional: with today's AI budget used up, skip it (never block chat).
+  if (!(await hasBudget(input.userId))) return { status: 'budget_exhausted' };
   const { messages, contextMessages } = memoryTurnInput(input.thread);
   if (messages.length === 0) return { status: 'nothing_to_learn' };
-  const { results } = await getEngine().add(messages, {
-    userId: input.userId,
-    metadata: input.metadata ?? {},
-    contextMessages,
-  });
+  const { results } = await withUsageContext({ userId: input.userId, feature: 'memory' }, () =>
+    getEngine().add(messages, {
+      userId: input.userId,
+      metadata: input.metadata ?? {},
+      contextMessages,
+    }),
+  );
   const events: Record<string, number> = {};
   for (const r of results) events[r.event] = (events[r.event] ?? 0) + 1;
   return {

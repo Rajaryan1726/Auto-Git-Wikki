@@ -1,6 +1,11 @@
 import { createSseParser } from '@autowiki/shared';
 import { env } from '../lib/env.js';
 import { CircuitBreaker, isQuotaError, retryAfterMsFrom } from './circuit-breaker.js';
+import { currentUsageContext, recordUsage, type UsageContext } from './usage.js';
+
+import { moduleLogger } from '../lib/logger.js';
+
+const log = moduleLogger('llm');
 
 /**
  * Text generation over the providers' REST streaming APIs.
@@ -25,6 +30,8 @@ export type GenerateRequest = {
   json?: boolean;
   /** Called once per model attempt with the provider-reported token usage, if any. */
   onUsage?: (usage: TokenUsage, model: string) => void;
+  /** Who pays: recorded in llm_usage (falls back to the async usage context). */
+  usage?: UsageContext;
 };
 
 export class LlmError extends Error {
@@ -49,6 +56,13 @@ export function providerForGenModel(model: string): GenProvider {
 }
 
 type FetchLike = typeof fetch;
+
+/** Provider-reported usage: to the caller's onUsage, and to llm_usage for the budget. */
+function reportUsage(req: GenerateRequest, usage: TokenUsage, model: string): void {
+  req.onUsage?.(usage, model);
+  const ctx = req.usage ?? currentUsageContext();
+  if (ctx) recordUsage(ctx, model, usage);
+}
 
 /** Shared by every generation call in this process (chat, query rewrite, wiki). */
 export const generationBreaker = new CircuitBreaker();
@@ -144,7 +158,7 @@ async function* streamGemini(
       }
     }
   }
-  if (usage) req.onUsage?.(usage, model);
+  if (usage) reportUsage(req, usage, model);
 }
 
 /**
@@ -197,7 +211,8 @@ async function* streamOpenAI(
       };
       if (data.type === 'response.output_text.delta' && data.delta) yield data.delta;
       else if (data.type === 'response.completed' && data.response?.usage) {
-        req.onUsage?.(
+        reportUsage(
+          req,
           {
             inputTokens: data.response.usage.input_tokens ?? 0,
             outputTokens: data.response.usage.output_tokens ?? 0,
@@ -279,7 +294,7 @@ export async function openStream(
       noteFailure(model, err);
       const message = err instanceof Error ? err.message : String(err);
       const status = err instanceof LlmError && err.status ? ` (${err.status})` : '';
-      console.warn(`[llm] ${model} failed before streaming${status}: ${message.slice(0, 200)}`);
+      log.warn(`[llm] ${model} failed before streaming${status}: ${message.slice(0, 200)}`);
       failures.push({ model, message });
     }
   }
@@ -324,7 +339,7 @@ export async function* resilientStream(
       noteFailure(opened.model, err);
       remaining = remaining.slice(remaining.indexOf(opened.model) + 1);
       const reason = err instanceof Error ? err.message : String(err);
-      console.warn(`[llm] ${opened.model} failed mid-stream: ${reason.slice(0, 200)}`);
+      log.warn(`[llm] ${opened.model} failed mid-stream: ${reason.slice(0, 200)}`);
       if (remaining.length === 0) throw err;
       yield { type: 'reset', failedModel: opened.model, reason };
     }

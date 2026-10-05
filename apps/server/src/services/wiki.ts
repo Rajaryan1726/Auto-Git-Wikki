@@ -45,6 +45,10 @@ import {
   type WikiOutline,
 } from './wiki-content.js';
 
+import { moduleLogger } from '../lib/logger.js';
+
+const log = moduleLogger('wiki');
+
 type RunRow = typeof wikiRuns.$inferSelect;
 type JobRow = typeof indexJobs.$inferSelect;
 
@@ -59,6 +63,8 @@ const PAGE_MAX_TOKENS = 10_000;
 export type WikiRunCtx = {
   runId: string;
   repoId: string;
+  /** The repo owner: pays for the wiki's LLM calls (llm_usage, daily budget). */
+  userId: string;
   jobId: string;
   trigger: 'index' | 'regenerate';
   repoFullName: string;
@@ -87,7 +93,7 @@ async function expireStaleRuns(repoId: string): Promise<void> {
     );
 }
 
-async function runningRun(repoId: string): Promise<RunRow | null> {
+export async function runningWikiRun(repoId: string): Promise<RunRow | null> {
   const [run] = await db
     .select()
     .from(wikiRuns)
@@ -122,7 +128,7 @@ export async function startWikiRun(
       .set({ wikiPagesTotal: null, wikiPagesDone: 0 })
       .where(eq(indexJobs.id, jobId));
   } else {
-    const existing = await runningRun(repoId);
+    const existing = await runningWikiRun(repoId);
     if (existing) return { run: existing, created: false };
   }
   try {
@@ -133,7 +139,7 @@ export async function startWikiRun(
     return { run: run!, created: true };
   } catch (err) {
     if (isUniqueViolation(err)) {
-      const existing = await runningRun(repoId);
+      const existing = await runningWikiRun(repoId);
       if (existing) return { run: existing, created: false };
     }
     throw err;
@@ -153,6 +159,7 @@ export async function loadRunCtx(runId: string): Promise<WikiRunCtx | null> {
   return {
     runId,
     repoId: row.repo.id,
+    userId: row.repo.userId,
     jobId: row.job.id,
     trigger: row.run.trigger,
     repoFullName: row.repo.fullName,
@@ -242,6 +249,7 @@ export async function generateOutline(
   let errors: string[] = [];
   for (let attempt = 1; attempt <= 2; attempt++) {
     const reply = await generateText({
+      usage: { userId: ctx.userId, feature: 'wiki' },
       system: OUTLINE_SYSTEM_PROMPT,
       messages,
       json: true,
@@ -265,7 +273,7 @@ export async function generateOutline(
           droppedFiles: result.droppedFiles.length,
         };
         await saveOutline(ctx, result.outline);
-        console.log(
+        log.info(
           `[wiki] run ${ctx.runId} outline: ${result.outline.pages.length} pages by ${reply.model}` +
             ` (attempt ${attempt}, ${stats.ms} ms, ${fmtUsage(usage)}` +
             `${result.droppedFiles.length ? `, ${result.droppedFiles.length} unknown files dropped` : ''})`,
@@ -274,7 +282,7 @@ export async function generateOutline(
       }
       errors = result.errors;
     }
-    console.warn(
+    log.warn(
       `[wiki] run ${ctx.runId} outline attempt ${attempt} invalid: ${errors.join('; ').slice(0, 300)}`,
     );
     messages.push(
@@ -347,7 +355,13 @@ export async function generatePage(
     },
   ];
 
-  const first = await generateText({ system, messages, maxOutputTokens: PAGE_MAX_TOKENS });
+  const usage0 = { userId: ctx.userId, feature: 'wiki' as const };
+  const first = await generateText({
+    system,
+    messages,
+    maxOutputTokens: PAGE_MAX_TOKENS,
+    usage: usage0,
+  });
   let usage = first.usage;
   let model = first.model;
   const fallbackFrom = [...first.failedOrSkipped];
@@ -361,7 +375,12 @@ export async function generatePage(
       { role: 'assistant', content: first.text },
       { role: 'user', content: badPathsRetryTurn(badFirst.map((b) => b.path)) },
     );
-    const second = await generateText({ system, messages, maxOutputTokens: PAGE_MAX_TOKENS });
+    const second = await generateText({
+      system,
+      messages,
+      maxOutputTokens: PAGE_MAX_TOKENS,
+      usage: usage0,
+    });
     usage = addUsage(usage, second.usage);
     fallbackFrom.push(...second.failedOrSkipped);
     const retried = cleanPageMarkdown(second.text);
@@ -407,7 +426,7 @@ export async function generatePage(
     });
   await updatePagesDone(ctx);
 
-  console.log(
+  log.info(
     `[wiki] run ${ctx.runId} page ${page.slug}: ${model}` +
       `${meta.fallbackFrom.length ? ` (after ${meta.fallbackFrom.join(', ')})` : ''}, ` +
       `${fmtUsage(usage)}, ${meta.ms} ms, ${blocks.length} blocks + ${excerpts.length} excerpts` +
@@ -499,13 +518,24 @@ export async function finishRun(
         ),
       );
   }
-  console.log(
-    `[wiki] run ${runId} ${failed ? 'FAILED' : 'done'}: ${stats.pagesGenerated} pages in ` +
-      `${Math.round((stats.durationMs ?? 0) / 1000)} s, ${stats.inputTokens} in / ${stats.outputTokens} out tokens, ` +
-      `models ${JSON.stringify(stats.models)}, outline by ${stats.outlineModel}, ` +
-      `${stats.pagesRetriedForPaths} pages retried for unknown paths, ` +
-      `${stats.pagesWithRemovedPaths} with paths removed (${stats.removedPaths})` +
-      (error ? ` | ${error}` : ''),
+  // Per wiki run: pages, tokens, time, models, hallucination-check counts.
+  log[failed ? 'warn' : 'info'](
+    {
+      runId,
+      repoId: run.repoId,
+      status: failed ? 'failed' : 'done',
+      pages: stats.pagesGenerated,
+      pagesFailed: stats.pagesFailed,
+      durationMs: stats.durationMs,
+      inputTokens: stats.inputTokens,
+      outputTokens: stats.outputTokens,
+      models: stats.models,
+      outlineModel: stats.outlineModel,
+      pagesRetriedForPaths: stats.pagesRetriedForPaths,
+      pagesWithRemovedPaths: stats.pagesWithRemovedPaths,
+      ...(error ? { error } : {}),
+    },
+    'wiki run finished',
   );
   return { status: failed ? 'failed' : 'done', error, stats };
 }

@@ -10,11 +10,19 @@ import {
   getWikiPage,
   getWikiState,
   listWikiPages,
+  runningWikiRun,
   startWikiRun,
   wikiJobFor,
 } from '../services/wiki.js';
 import { inngest } from '../inngest/client.js';
+import { assertCanRegenerate } from '../services/usage.js';
+import { rateLimit } from '../lib/rate-limit.js';
+import { env } from '../lib/env.js';
 import { WIKI_REGENERATE_EVENT, type WikiRegenerateData } from '../inngest/functions/wiki.js';
+
+import { moduleLogger } from '../lib/logger.js';
+
+const log = moduleLogger('wiki');
 
 const idSchema = z.uuid();
 
@@ -34,6 +42,8 @@ async function wikiResponse(repoId: string): Promise<WikiResponse> {
 export const repoWikiRouter = Router();
 repoWikiRouter.use(requireAuth);
 
+const wikiRateLimit = rateLimit({ name: 'wiki', limit: env.RATE_LIMIT_WIKI_PER_MIN });
+
 /** Page tree + generation state for the repo's last successful index. */
 repoWikiRouter.get('/:id/wiki', async (req, res) => {
   const repo = await ownedRepo(req);
@@ -41,7 +51,7 @@ repoWikiRouter.get('/:id/wiki', async (req, res) => {
 });
 
 /** Regenerates only the wiki of the last successful index (no re-embedding). */
-repoWikiRouter.post('/:id/wiki/regenerate', async (req, res) => {
+repoWikiRouter.post('/:id/wiki/regenerate', wikiRateLimit, async (req, res) => {
   const repo = await ownedRepo(req);
   const job = await wikiJobFor(repo.id);
   if (!job) {
@@ -58,15 +68,16 @@ repoWikiRouter.post('/:id/wiki/regenerate', async (req, res) => {
       'This repository is being indexed; its wiki is generated when indexing finishes.',
     );
   }
+  if (!(await runningWikiRun(repo.id))) await assertCanRegenerate(currentUser(req).id);
   const { run, created } = await startWikiRun(repo.id, job.id, 'regenerate');
   if (created) {
     try {
       const data: WikiRegenerateData = { runId: run.id, repoId: repo.id };
       await inngest.send({ name: WIKI_REGENERATE_EVENT, data });
     } catch (err) {
-      console.error(
-        '[wiki] could not enqueue regeneration:',
-        err instanceof Error ? err.message : err,
+      log.error(
+        { err: err instanceof Error ? err.message : err },
+        '[wiki] could not enqueue regeneration',
       );
       await failRun(run.id, 'Could not start: the background worker is unavailable.');
       throw new HttpError(

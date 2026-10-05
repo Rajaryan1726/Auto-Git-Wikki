@@ -1,5 +1,9 @@
 import { HttpError } from '../lib/http-error.js';
 
+import { moduleLogger } from '../lib/logger.js';
+
+const log = moduleLogger('github-api');
+
 export const GITHUB_API_ORIGIN = 'https://api.github.com';
 
 /** A rate-limit error that knows when GitHub will accept requests again. */
@@ -72,7 +76,7 @@ export function ensureGithubOk(res: Response, context: string): void {
 export function logRateLimit(res: Response): void {
   const remaining = Number(res.headers.get('x-ratelimit-remaining'));
   if (Number.isFinite(remaining) && remaining < 100) {
-    console.warn(`[github] rate limit low: ${remaining} requests remaining`);
+    log.warn(`[github] rate limit low: ${remaining} requests remaining`);
   }
 }
 

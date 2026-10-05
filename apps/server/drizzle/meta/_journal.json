@@ -57,6 +57,13 @@
       "when": 1791137356155,
       "tag": "0007_user_memory",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791184441825,
+      "tag": "0008_llm_usage",
+      "breakpoints": true
     }
   ]
 }

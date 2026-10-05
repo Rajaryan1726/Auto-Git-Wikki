@@ -294,3 +294,20 @@ export const chatMessages = pgTable(
   },
   (t) => [index('chat_messages_thread_created_idx').on(t.threadId, t.createdAt)],
 );
+
+/** LLM token usage per user and feature, for the daily budget (Phase 6). */
+export const llmUsage = pgTable(
+  'llm_usage',
+  {
+    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    feature: text('feature').$type<'chat' | 'rewrite' | 'wiki' | 'memory'>().notNull(),
+    model: text('model').notNull(),
+    inputTokens: integer('input_tokens').notNull(),
+    outputTokens: integer('output_tokens').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('llm_usage_user_created_idx').on(t.userId, t.createdAt)],
+);

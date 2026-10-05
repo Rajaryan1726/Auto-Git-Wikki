@@ -15,8 +15,12 @@ import {
   setMemoryEnabled,
 } from '../services/memory.js';
 
+import { moduleLogger } from '../lib/logger.js';
+
+const log = moduleLogger('memories');
+
 function unavailable(err: unknown): HttpError {
-  console.error('[memory] engine error:', err instanceof Error ? err.message : err);
+  log.error({ err: err instanceof Error ? err.message : err }, '[memory] engine error');
   return new HttpError(503, 'MEMORY_UNAVAILABLE', 'The memory service is unavailable right now.');
 }
 

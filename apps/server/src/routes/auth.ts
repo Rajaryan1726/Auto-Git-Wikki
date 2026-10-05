@@ -10,6 +10,7 @@ import {
   sessionCookieOptions,
 } from '../lib/cookies.js';
 import { env } from '../lib/env.js';
+import { rateLimit } from '../lib/rate-limit.js';
 import { currentUser, requireAuth } from '../middleware/require-auth.js';
 import {
   GithubOAuthError,
@@ -19,6 +20,10 @@ import {
 } from '../services/github-oauth.js';
 import { createSessionToken } from '../services/session.js';
 import { upsertGithubUser } from '../services/users.js';
+
+import { moduleLogger } from '../lib/logger.js';
+
+const log = moduleLogger('auth');
 
 export const authRouter = Router();
 
@@ -34,14 +39,22 @@ function statesMatch(expected: unknown, received: string | undefined): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-authRouter.get('/github', (_req, res) => {
+// Sign-in endpoints are public: limit per client IP.
+const authRateLimit = rateLimit({
+  name: 'auth',
+  limit: env.RATE_LIMIT_AUTH_PER_MIN,
+  key: (req) => req.ip ?? 'unknown',
+  message: 'Too many sign-in attempts. Please wait a minute and try again.',
+});
+
+authRouter.get('/github', authRateLimit, (_req, res) => {
   let url: string;
   const state = randomBytes(32).toString('base64url');
   try {
     url = buildAuthorizeUrl(state);
   } catch (err) {
     if (err instanceof GithubOAuthError && err.code === 'not_configured') {
-      console.error('[auth] GitHub OAuth is not configured');
+      log.error('[auth] GitHub OAuth is not configured');
       redirectToLogin(res, 'not_configured');
       return;
     }
@@ -57,7 +70,7 @@ const callbackQuerySchema = z.object({
   error: z.string().optional(),
 });
 
-authRouter.get('/github/callback', async (req, res) => {
+authRouter.get('/github/callback', authRateLimit, async (req, res) => {
   const parsed = callbackQuerySchema.safeParse(req.query);
   if (!parsed.success) {
     redirectToLogin(res, 'oauth_failed');
@@ -67,7 +80,7 @@ authRouter.get('/github/callback', async (req, res) => {
 
   // Verify state first so a forged callback cannot even trigger the denial path.
   if (!statesMatch(req.cookies?.[OAUTH_STATE_COOKIE], state)) {
-    console.warn('[auth] rejected OAuth callback: missing or mismatched state');
+    log.warn('[auth] rejected OAuth callback: missing or mismatched state');
     redirectToLogin(res, 'invalid_state');
     return;
   }
@@ -88,15 +101,15 @@ authRouter.get('/github/callback', async (req, res) => {
 
     res.clearCookie(OAUTH_STATE_COOKIE, clearOptions(oauthStateCookieOptions));
     res.cookie(SESSION_COOKIE, session, sessionCookieOptions);
-    console.log(
+    log.info(
       `[auth] signed in ${user.username}` +
         (tokens.accessTokenExpiresAt ? ' (expiring token)' : ' (non-expiring token)'),
     );
     res.redirect(`${env.WEB_ORIGIN}/`);
   } catch (err) {
     const reason = err instanceof GithubOAuthError ? err.code : 'unexpected';
-    console.error(`[auth] GitHub sign-in failed: ${reason}`);
-    if (!(err instanceof GithubOAuthError)) console.error(err);
+    log.error(`[auth] GitHub sign-in failed: ${reason}`);
+    if (!(err instanceof GithubOAuthError)) log.error(err);
     redirectToLogin(res, 'oauth_failed');
   }
 });

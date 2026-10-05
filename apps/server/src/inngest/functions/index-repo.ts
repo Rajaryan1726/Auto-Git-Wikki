@@ -30,9 +30,15 @@ import {
   upsertPoints,
   type ChunkPayload,
 } from '../../services/qdrant.js';
-import { pruneWikiRunsOfOtherJobs, startWikiRun } from '../../services/wiki.js';
+import { failRun, pruneWikiRunsOfOtherJobs, startWikiRun } from '../../services/wiki.js';
+import { budgetExhausted, hasBudget } from '../../services/usage.js';
+import { env } from '../../lib/env.js';
 import { inngest } from '../client.js';
 import { runWikiSteps } from './wiki.js';
+
+import { moduleLogger } from '../../lib/logger.js';
+
+const log = moduleLogger('index-repo');
 
 export const INDEX_REQUESTED_EVENT = 'repo/index.requested';
 export type IndexRequestedData = { jobId: string; repoId: string };
@@ -250,7 +256,7 @@ export const indexRepo = inngest.createFunction(
       if (!parsed.success) return;
       const { jobId } = parsed.data;
       await failJob(jobId, error.message || 'Indexing failed.');
-      console.warn(`[index] job ${jobId} failed: ${error.message}`);
+      log.warn(`[index] job ${jobId} failed: ${error.message}`);
     },
   },
   async ({ event, step }) => {
@@ -305,11 +311,17 @@ export const indexRepo = inngest.createFunction(
         await setJobStep(jobId, 'list_files');
         const tree = await listTree(githubFor(ctx.userId), head.fullName, head.commitSha);
         const { files, skipped, truncated } = filterRepoFiles(tree.entries);
+        if (truncated || files.length > env.LIMIT_MAX_REPO_FILES) {
+          throw new NonRetriableError(
+            `This repository has ${truncated ? 'more than ' : ''}${files.length.toLocaleString('en-US')} indexable files; ` +
+              `the limit is ${env.LIMIT_MAX_REPO_FILES.toLocaleString('en-US')} per repository.`,
+          );
+        }
         await db
           .update(indexJobs)
           .set({ filesTotal: files.length, filesDone: 0 })
           .where(eq(indexJobs.id, jobId));
-        console.log(
+        log.info(
           `[index] job ${jobId}: ${files.length} files to index` +
             ` (skipped ${JSON.stringify(skipped)}${truncated || tree.truncated ? ', list truncated' : ''})`,
         );
@@ -364,7 +376,7 @@ export const indexRepo = inngest.createFunction(
           }
           await setFilesDone(jobId, Math.min(listing.files.length, (i + 1) * FILES_PER_BATCH));
           const skipped = perFile.filter((f) => f.skipped).length;
-          console.log(
+          log.info(
             `[index] job ${jobId} batch ${i + 1}/${batches}: ${batch.length} files, ${rows.length} chunks` +
               (skipped ? `, ${skipped} skipped` : ''),
           );
@@ -413,7 +425,7 @@ export const indexRepo = inngest.createFunction(
           );
         }
         usage.rateLimitWaitMs += waitMs;
-        console.warn(
+        log.warn(
           `[index] job ${jobId}: embedding rate-limited, sleeping ${Math.ceil(waitMs / 1000)}s`,
         );
         await step.sleep(`embed-rate-limit-wait-${n}`, waitMs);
@@ -437,18 +449,24 @@ export const indexRepo = inngest.createFunction(
       error: null,
     };
     try {
-      const { runId } = await step.run('wiki-start', async () => {
+      const { runId, skipped } = await step.run('wiki-start', async () => {
         await assertJobRunning(jobId);
         await setJobStep(jobId, 'wiki');
         const { run } = await startWikiRun(ctx.repoId, jobId, 'index');
-        return { runId: run.id };
+        // The wiki is LLM work: with today's AI budget used up, skip it (the index still
+        // finishes and chat works); the user can regenerate it tomorrow.
+        if (!(await hasBudget(ctx.userId))) {
+          await failRun(run.id, budgetExhausted().message);
+          return { runId: run.id, skipped: true };
+        }
+        return { runId: run.id, skipped: false };
       });
-      wiki = await runWikiSteps(step, runId);
+      wiki = skipped
+        ? { status: 'failed', error: 'AI budget exhausted' }
+        : await runWikiSteps(step, runId);
     } catch (err) {
       wiki = { status: 'failed', error: err instanceof Error ? err.message : String(err) };
-      console.warn(
-        `[index] job ${jobId}: wiki step failed, finishing the index anyway: ${wiki.error}`,
-      );
+      log.warn(`[index] job ${jobId}: wiki step failed, finishing the index anyway: ${wiki.error}`);
     }
 
     await step.run('finalize', async () => {
@@ -472,10 +490,22 @@ export const indexRepo = inngest.createFunction(
       });
       // The wiki of earlier index jobs is no longer shown; drop it.
       await pruneWikiRunsOfOtherJobs(ctx.repoId, jobId);
-      console.log(
-        `[index] job ${jobId} done: ${listing.files.length} files, ${chunksTotal} chunks embedded, ` +
-          `${usage.reusedChunks} reused, ${usage.embedCalls} embed calls, ${usage.rateLimitHits} rate limits, ` +
-          `${removed} old points removed, wiki ${wiki.status}`,
+      // Per index job: duration, files, chunks, embedding calls (no file contents).
+      log.info(
+        {
+          jobId,
+          repoId: ctx.repoId,
+          durationMs: stats.durationMs,
+          files: listing.files.length,
+          skippedFiles,
+          chunks: chunksTotal,
+          reusedChunks: usage.reusedChunks,
+          embedCalls: usage.embedCalls,
+          rateLimitHits: usage.rateLimitHits,
+          oldPointsRemoved: removed,
+          wiki: wiki.status,
+        },
+        'index job done',
       );
     });
 

@@ -1,9 +1,13 @@
+import { moduleLogger } from '../lib/logger.js';
+
 /**
  * Per-provider circuit breaker for quota / rate-limit errors. When a provider answers 429
  * (e.g. the Gemini free-tier quota), it is marked unavailable until its retry time, clamped
  * to [minOpenMs, maxOpenMs], and callers route straight to the fallback during that window
  * instead of failing on the primary first for every request. Per process, in memory.
  */
+const breakerLog = moduleLogger('llm');
+
 export type BreakerOptions = {
   minOpenMs?: number;
   maxOpenMs?: number;
@@ -25,7 +29,7 @@ export class CircuitBreaker {
     this.minOpenMs = opts.minOpenMs ?? BREAKER_MIN_OPEN_MS;
     this.maxOpenMs = opts.maxOpenMs ?? BREAKER_MAX_OPEN_MS;
     this.now = opts.now ?? Date.now;
-    this.log = opts.log ?? ((m) => console.warn(m));
+    this.log = opts.log ?? ((m) => breakerLog.warn(m));
   }
 
   /** True while `key` is unavailable. Closes (and logs it) once the window has passed. */

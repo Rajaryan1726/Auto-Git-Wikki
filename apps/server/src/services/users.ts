@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { AuthUser } from '@autowiki/shared';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
@@ -43,8 +43,21 @@ export async function getReposSyncedAt(userId: string): Promise<Date | null> {
 }
 
 export async function findAuthUserById(id: string): Promise<AuthUser | null> {
+  const row = await findSessionUser(id);
+  return row ? { id: row.id, username: row.username, avatarUrl: row.avatarUrl } : null;
+}
+
+/** The session's user plus whether they still have a GitHub token (false once revoked). */
+export async function findSessionUser(
+  id: string,
+): Promise<(AuthUser & { hasGithubAccess: boolean }) | null> {
   const [row] = await db
-    .select({ id: users.id, username: users.username, avatarUrl: users.avatarUrl })
+    .select({
+      id: users.id,
+      username: users.username,
+      avatarUrl: users.avatarUrl,
+      hasGithubAccess: sql<boolean>`${users.githubAccessTokenEnc} is not null`,
+    })
     .from(users)
     .where(eq(users.id, id))
     .limit(1);

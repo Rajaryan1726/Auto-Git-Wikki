@@ -6,6 +6,10 @@ import { chatMessages, chatThreads } from '../../db/schema.js';
 import { rememberTurn } from '../../services/memory.js';
 import { inngest } from '../client.js';
 
+import { moduleLogger } from '../../lib/logger.js';
+
+const log = moduleLogger('memory');
+
 export const CHAT_TURN_COMPLETED_EVENT = 'chat/turn.completed';
 export type ChatTurnCompletedData = { userId: string; threadId: string; messageId: string };
 const eventDataSchema = z.object({ userId: z.uuid(), threadId: z.uuid(), messageId: z.uuid() });
@@ -55,7 +59,7 @@ export const rememberChatTurn = inngest.createFunction(
         thread,
         metadata: { threadId: parsed.data.threadId, sessionId: parsed.data.threadId },
       });
-      console.log(
+      log.info(
         `[memory] user ${parsed.data.userId} turn ${parsed.data.messageId}: ${result.status} in ${Date.now() - started} ms` +
           ('events' in result ? ` ${JSON.stringify(result.events)}` : ''),
       );

@@ -11,14 +11,22 @@ import {
   createIndexJob,
   expireStaleQueuedJobs,
   failJob,
+  findActiveJob,
   getJobForUser,
   listActiveJobsForUser,
   listJobsForRepo,
   serializeJob,
 } from '../services/index-jobs.js';
 import { getRepoForUser } from '../services/repos.js';
+import { assertCanIndex } from '../services/usage.js';
+import { rateLimit } from '../lib/rate-limit.js';
+import { env } from '../lib/env.js';
 import { inngest } from '../inngest/client.js';
 import { INDEX_REQUESTED_EVENT, type IndexRequestedData } from '../inngest/functions/index-repo.js';
+
+import { moduleLogger } from '../lib/logger.js';
+
+const log = moduleLogger('index-jobs');
 
 const idSchema = z.uuid();
 
@@ -34,8 +42,13 @@ async function ownedRepoId(req: Request): Promise<string> {
 export const repoIndexRouter = Router({ mergeParams: true });
 repoIndexRouter.use(requireAuth);
 
-repoIndexRouter.post('/:id/index', async (req, res) => {
+const indexRateLimit = rateLimit({ name: 'index', limit: env.RATE_LIMIT_INDEX_PER_MIN });
+
+repoIndexRouter.post('/:id/index', indexRateLimit, async (req, res) => {
   const repoId = await ownedRepoId(req);
+  // A request while a job is already active just returns it (no new job, no limit used).
+  const active = await findActiveJob(repoId);
+  if (!active) await assertCanIndex(currentUser(req).id, repoId);
   const { job, created } = await createIndexJob(repoId);
 
   if (created) {
@@ -43,9 +56,9 @@ repoIndexRouter.post('/:id/index', async (req, res) => {
       const data: IndexRequestedData = { jobId: job.id, repoId };
       await inngest.send({ name: INDEX_REQUESTED_EVENT, data });
     } catch (err) {
-      console.error(
-        '[index] could not enqueue job:',
-        err instanceof Error ? err.message : 'unknown error',
+      log.error(
+        { err: err instanceof Error ? err.message : 'unknown error' },
+        '[index] could not enqueue job',
       );
       await failJob(job.id, 'Could not start indexing: the background worker is unavailable.');
       throw new HttpError(

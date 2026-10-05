@@ -1,5 +1,11 @@
 import type { ChatSource } from '@autowiki/shared';
-import { generateText, resilientStream, type AnswerEvent, type ChatTurn } from './llm.js';
+import {
+  generateText,
+  resilientStream,
+  type AnswerEvent,
+  type ChatTurn,
+  type TokenUsage,
+} from './llm.js';
 import {
   CANDIDATE_POOL,
   REWRITE_SYSTEM_PROMPT,
@@ -11,6 +17,10 @@ import {
   type ContextBlock,
 } from './rag-context.js';
 import { searchRepo } from './search.js';
+
+import { moduleLogger } from '../lib/logger.js';
+
+const log = moduleLogger('rag');
 
 export { CANDIDATE_POOL, rankHits } from './rag-context.js';
 
@@ -35,6 +45,7 @@ export type PreparedAnswer = {
 export async function rewriteQuery(
   question: string,
   history: ChatTurn[],
+  userId?: string,
 ): Promise<{ query: string; model: string | null }> {
   if (history.length === 0) return { query: question, model: null };
   try {
@@ -43,6 +54,7 @@ export async function rewriteQuery(
       .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 1500)}`)
       .join('\n\n');
     const { text, model } = await generateText({
+      ...(userId ? { usage: { userId, feature: 'rewrite' as const } } : {}),
       system: REWRITE_SYSTEM_PROMPT,
       messages: [
         {
@@ -54,9 +66,9 @@ export async function rewriteQuery(
     });
     return { query: cleanRewrittenQuery(text, question), model };
   } catch (err) {
-    console.warn(
-      '[rag] query rewrite failed, using the question as-is:',
-      err instanceof Error ? err.message : err,
+    log.warn(
+      { err: err instanceof Error ? err.message : err },
+      '[rag] query rewrite failed, using the question as-is',
     );
     return { query: question, model: null };
   }
@@ -68,8 +80,14 @@ export async function prepareAnswer(input: {
   repoFullName: string;
   question: string;
   history: ChatTurn[];
+  /** Who pays for the rewrite call (llm_usage). */
+  userId?: string;
 }): Promise<PreparedAnswer> {
-  const { query, model: rewriteModel } = await rewriteQuery(input.question, input.history);
+  const { query, model: rewriteModel } = await rewriteQuery(
+    input.question,
+    input.history,
+    input.userId,
+  );
   // searchRepo picks the model, collection and commit of the repo's last successful job.
   const { hits, commitSha } = await searchRepo(input.repoId, query, CANDIDATE_POOL);
   const { blocks, sources } = buildContext(rankHits(query, hits));
@@ -95,11 +113,15 @@ export async function prepareAnswer(input: {
 export function streamAnswer(
   prepared: PreparedAnswer,
   signal?: AbortSignal,
+  userId?: string,
+  onUsage?: (usage: TokenUsage, model: string) => void,
 ): AsyncGenerator<AnswerEvent> {
   return resilientStream({
     system: prepared.system,
     messages: prepared.messages,
     maxOutputTokens: 4096,
     signal,
+    ...(userId ? { usage: { userId, feature: 'chat' as const } } : {}),
+    ...(onUsage ? { onUsage } : {}),
   });
 }

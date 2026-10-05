@@ -20,6 +20,10 @@ const MAX_SHARED_PAUSE_MS = 2 * 60_000;
 
 import { EmbeddingFatalError, EmbeddingRateLimitError } from './embedding-errors.js';
 
+import { moduleLogger } from '../lib/logger.js';
+
+const log = moduleLogger('embeddings');
+
 export { EmbeddingFatalError, EmbeddingRateLimitError };
 
 export function l2normalize(vector: number[]): number[] {
@@ -132,7 +136,7 @@ export function createGeminiEmbedder(opts: EmbedderOptions): Embedder {
         const delay = retryDelayMs(res.headers, json);
         const retryAt = Date.now() + delay;
         const quotas = quotaIds(json);
-        console.warn(
+        log.warn(
           `[embed] 429 from Gemini: retry in ${Math.ceil(delay / 1000)}s` +
             (quotas.length ? ` (quota: ${quotas.join(', ')})` : ''),
         );
@@ -277,7 +281,7 @@ export function createOpenAIEmbedder(opts: EmbedderOptions): Embedder {
           }
           stats.rateLimited++;
           const delay = openaiRetryDelayMs(res.headers);
-          console.warn(`[embed] 429 from OpenAI: retry in ${Math.ceil(delay / 1000)}s`);
+          log.warn(`[embed] 429 from OpenAI: retry in ${Math.ceil(delay / 1000)}s`);
           opts.throttle.pauseUntil(Date.now() + Math.min(delay, MAX_SHARED_PAUSE_MS));
           throw new EmbeddingRateLimitError(new Date(Date.now() + delay), message, [
             'openai-rate-limit',

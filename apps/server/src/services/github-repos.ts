@@ -8,6 +8,10 @@ import {
   type GithubFetch,
 } from './github-api.js';
 
+import { moduleLogger } from '../lib/logger.js';
+
+const log = moduleLogger('github-repos');
+
 const REPOS_PATH =
   '/user/repos?affiliation=owner,collaborator,organization_member&per_page=100&sort=full_name&direction=asc';
 /** 100 pages x 100 = 10k repos; beyond that the fetch is treated as incomplete. */
@@ -95,7 +99,7 @@ export async function listUserRepos(fetchGh: GithubFetch): Promise<RepoListResul
 
   while (path) {
     if (pages >= MAX_PAGES) {
-      console.warn(`[github] stopped repo listing after ${MAX_PAGES} pages`);
+      log.warn(`[github] stopped repo listing after ${MAX_PAGES} pages`);
       return {
         repos: [...byId.values()],
         invalidCount,
@@ -161,9 +165,9 @@ export async function findRestrictedOrgs(fetchGh: GithubFetch): Promise<SkippedO
     );
     return results.filter((r): r is SkippedOrg => r !== null);
   } catch (err) {
-    console.warn(
-      '[github] org access check failed:',
-      err instanceof Error ? err.message : 'unknown error',
+    log.warn(
+      { err: err instanceof Error ? err.message : 'unknown error' },
+      '[github] org access check failed',
     );
     return [];
   }

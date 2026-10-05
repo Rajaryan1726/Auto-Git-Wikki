@@ -7,9 +7,33 @@ import { isExpired } from '../lib/token-expiry.js';
 import { GithubOAuthError, refreshAccessToken, type GithubTokenSet } from './github-oauth.js';
 import { tokenColumns } from './users.js';
 
+import { moduleLogger } from '../lib/logger.js';
+
+const log = moduleLogger('github-token');
+
 const GITHUB_API = 'https://api.github.com';
 /** Upper bound on waiting for another process's refresh to finish. */
 const REFRESH_LOCK_TIMEOUT = '20s';
+
+/**
+ * Forgets a user's GitHub tokens after GitHub rejected them for good (app access revoked
+ * or token deleted). Every later authenticated request then answers
+ * GITHUB_REAUTH_REQUIRED and clears the session (requireAuth), from any route, including
+ * after a background job (sync, indexing, wiki) was the one to notice.
+ */
+export async function markGithubAccessRevoked(userId: string): Promise<void> {
+  await db
+    .update(users)
+    .set({
+      githubAccessTokenEnc: null,
+      githubTokenExpiresAt: null,
+      githubRefreshTokenEnc: null,
+      githubRefreshTokenExpiresAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, userId));
+  log.warn({ userId }, 'GitHub access revoked: tokens cleared, the user must sign in again');
+}
 
 export function reauthRequired(): HttpError {
   return new HttpError(
@@ -94,7 +118,7 @@ export function createGithubTokenService(refresh: RefreshFn = refreshAccessToken
         tokens = await refresh(decryptToken(row.refreshEnc));
       } catch (err) {
         if (err instanceof GithubOAuthError) {
-          console.warn(`[github] token refresh failed for user ${userId}: ${err.code}`);
+          log.warn(`[github] token refresh failed for user ${userId}: ${err.code}`);
           throw reauthRequired();
         }
         throw err;
@@ -110,7 +134,7 @@ export function createGithubTokenService(refresh: RefreshFn = refreshAccessToken
         .update(users)
         .set({ ...columns, updatedAt: new Date() })
         .where(eq(users.id, userId));
-      console.log(`[github] refreshed access token for user ${userId}`);
+      log.info(`[github] refreshed access token for user ${userId}`);
       return tokens.accessToken;
     });
   }
@@ -140,8 +164,22 @@ export function createGithubTokenService(refresh: RefreshFn = refreshAccessToken
     const res = await send(token);
     if (res.status !== 401) return res;
 
-    const fresh = await getGithubToken(userId, { staleToken: token });
-    return send(fresh);
+    let fresh: string;
+    try {
+      fresh = await getGithubToken(userId, { staleToken: token });
+    } catch (err) {
+      // GitHub rejected the token and it cannot be refreshed: access was revoked.
+      if (err instanceof HttpError && err.code === 'GITHUB_REAUTH_REQUIRED') {
+        await markGithubAccessRevoked(userId);
+      }
+      throw err;
+    }
+    const retried = await send(fresh);
+    if (retried.status === 401) {
+      await markGithubAccessRevoked(userId);
+      throw reauthRequired();
+    }
+    return retried;
   }
 
   return { getGithubToken, githubFetch };

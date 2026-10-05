@@ -38,6 +38,24 @@ const envSchema = z.object({
   // answer is generated without memory.
   MEMORY_RECALL_TIMEOUT_MS: z.coerce.number().int().positive().max(5000).default(800),
   MEMORY_RECALL_LIMIT: z.coerce.number().int().positive().max(20).default(5),
+
+  // Per-user limits and cost control (Phase 6). Daily counters reset at 00:00 UTC.
+  LIMIT_MAX_INDEXED_REPOS: z.coerce.number().int().positive().default(10),
+  LIMIT_INDEX_JOBS_PER_DAY: z.coerce.number().int().positive().default(20),
+  LIMIT_WIKI_REGENERATIONS_PER_DAY: z.coerce.number().int().positive().default(10),
+  LIMIT_CHAT_MESSAGES_PER_HOUR: z.coerce.number().int().positive().default(60),
+  /** Repos with more indexable files than this are refused (after filtering). */
+  LIMIT_MAX_REPO_FILES: z.coerce.number().int().positive().default(2000),
+  /** Input + output tokens per user per UTC day, across chat, rewrite, wiki and memory. */
+  LLM_DAILY_TOKEN_BUDGET: z.coerce.number().int().positive().default(1_000_000),
+
+  // Request rate limits (per minute; auth per IP, the rest per user).
+  RATE_LIMIT_AUTH_PER_MIN: z.coerce.number().int().positive().default(20),
+  RATE_LIMIT_INDEX_PER_MIN: z.coerce.number().int().positive().default(10),
+  RATE_LIMIT_WIKI_PER_MIN: z.coerce.number().int().positive().default(5),
+  RATE_LIMIT_ASK_PER_MIN: z.coerce.number().int().positive().default(20),
+  /** pino log level. */
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   EMBEDDING_MODEL: z.string().min(1),
   EMBEDDING_DIMS: z.coerce.number().int().min(128).max(3072),
 
