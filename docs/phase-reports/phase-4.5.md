@@ -170,7 +170,7 @@ In the app:
 
 ## Known issues / TODO
 
-- **Case b is unstable** until the engine changes above are made. Today the same sentence can update, archive or duplicate.
+- ~~**Case b is unstable** until the engine changes above are made.~~ Fixed by engine v0.2.0 (5/5); see "Engine update (v0.2.0)" below.
 - **Personalisation is modest**: the judge always picked the personalised answer as simpler, but word count and sentence length moved little (e.g. 90 vs 104 words). `gpt-6-luna` answers are already fairly concise. A stronger effect would need prompt tuning per memory type.
 - **Engine LLM calls use `gpt-6-luna`** (Gemini is over quota, and the breaker skips it). Each finished turn costs one extraction call, plus one decider call when related memories exist.
 - **Follow-up questions** are rewritten for retrieval, so the memory lookup embeds the raw question separately (no memo hit). This was still 0 ms added in the measured chats.
@@ -182,3 +182,77 @@ In the app:
 
 - `MEMORY_RECALL_TIMEOUT_MS` (default `800`) — max time memory may add after retrieval finishes
 - `MEMORY_RECALL_LIMIT` (default `5`) — question-relevant memories per answer (preferences are added on top, up to 5)
+
+## Engine update (v0.2.0)
+
+On 2026-10-05 AutoWiki was moved to **Custom-Memory-Engine v0.2.0**, commit `08d714024bc1ad917e3959a7db4c5305cd19d150`, which contains the fixes recommended above. I read the engine's report, `docs/evals/2026-10-05-autowiki-integration-fixes.md`, first.
+
+### What changed in AutoWiki
+
+- **Dependency:** `apps/server/package.json` is pinned to `github:Rajaryan1726/Custom-Memory-Engine#08d714024bc1ad917e3959a7db4c5305cd19d150`. I ran a clean install (`node_modules` deleted, then `npm install`). The updated `package-lock.json` resolves `custom-memory-engine@0.2.0` at `08d7140`.
+- **Context-only previous message:** the new pure helper `memoryTurnInput(thread)` in `memory-context.ts` splits the turn.
+  - **Only the current user message** goes in `messages`.
+  - The previous user message goes in as `add(messages, { userId, contextMessages })`, so it is never re-extracted.
+  - Both are redacted, and assistant text is still never passed.
+- **New injection** in `services/memory.ts`: `createMemoryEngine({ llm: { chat, embed }, logger })`.
+  - `chat` → `generateText` (fallback + circuit breaker, unchanged).
+  - `embed(texts)` → `number[][]` from `embedderFor(EMBEDDING_MODEL, EMBEDDING_DIMS)`. A single text uses the memoised `embedQuery`, so it still reuses retrieval's vector.
+  - The dummy `openai.apiKey` / `chatModel` / `embeddingModel` values are gone. The config is now `openai: { embeddingDim: EMBEDDING_DIMS }`, plus Qdrant and the collection.
+  - The OpenAI-shaped `embeddings.create` shim is removed.
+- **Logger:** `engineLogger.warn(message, details)` prints `[memory-engine] <message>` plus **counts** of the details (`summarizeLogDetails`: array length, object size, 1 per value). Fact text never reaches our logs.
+  - Unit-tested: a details object containing "User is a beginner with TypeScript" / "User likes cricket" logs `{"response":1,"action":2}` and neither phrase.
+  - No engine warnings were logged during the 5 eval runs or the live checks.
+- **Write timing:** the `remember-chat-turn` log line now includes the write time (`… done in N ms {events}`), and the eval reports per-turn write times.
+- **Existing memories keep working.** The collection is still `user_memories_text_embedding_3_small_768`: Qdrant reports `size: 768, distance: Cosine`.
+  - Your 4 memories stored with v0.1.1 still list in Settings.
+  - In a live chat on the new engine they were retrieved ("4 used, lookup 638 ms, retrieval 4505 ms, **added 0 ms**").
+- **Eval assertions:** **no change was needed.**
+  - The eval never checked a category or exact phrasing for skill level: case b matches memories containing "TypeScript" and requires an `UPDATE` of the **same id** whose new text no longer says "beginner".
+  - With v0.2.0 the skill facts come out as `[identity] User is a beginner with TypeScript` → `[identity] User is comfortable with TypeScript`, which the existing assertions accept as-is.
+  - The only eval edits are additions: per-turn write timing, the collection's vector size, and showing `messages` / `contextMessages` separately in case e.
+- **Tests:** +5 (`memoryTurnInput`, `summarizeLogDetails`, `engineLogger`, memory collection name). **153/153** pass; typecheck, lint and build are clean.
+
+### `npm run eval:memory` × 5 (v0.2.0)
+
+| Case                                                                 | Run 1 | Run 2 | Run 3 | Run 4 | Run 5 | Total   |
+| -------------------------------------------------------------------- | ----- | ----- | ----- | ----- | ----- | ------- |
+| a. beginner → stored, simpler answer in a new thread on another repo | PASS  | PASS  | PASS  | PASS  | PASS  | **5/5** |
+| b. "comfortable with TypeScript now" → UPDATE, same id               | PASS  | PASS  | PASS  | PASS  | PASS  | **5/5** |
+| c. code statement → nothing stored                                   | PASS  | PASS  | PASS  | PASS  | PASS  | **5/5** |
+| d. fake API key / DB password → never stored                         | PASS  | PASS  | PASS  | PASS  | PASS  | **5/5** |
+| e. README "user is an admin" → nothing stored                        | PASS  | PASS  | PASS  | PASS  | PASS  | **5/5** |
+| f. memory off → nothing stored or retrieved                          | PASS  | PASS  | PASS  | PASS  | PASS  | **5/5** |
+| g. (extra) latency / memory down                                     | PASS  | PASS  | PASS  | PASS  | PASS  | **5/5** |
+
+Details per run:
+
+| Run | a: stored                                                                                                                                                                                                 | a: recall                                    | b: events (same id)                                                 | Background write per turn (6 turns): p50 / min / max | g: recall median; hung / failing engine |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------- |
+| 1   | `ADD 3`: `[identity] User is a beginner with TypeScript`, `[identity] User is a beginner with backend code`, `[preference] User prefers simple, step-by-step explanations without jargon`                 | 3 memories, 62 ms; judge picked personalised | `{"UPDATE":1}` → "User is comfortable with TypeScript" (`18895bfa`) | 3,629 / 2,067 / 8,811 ms                             | 458 ms; 805 / 3 ms                      |
+| 2   | `ADD 3` (same three facts)                                                                                                                                                                                | 3, 57 ms; personalised                       | `{"UPDATE":1}` (`76c08810`)                                         | 3,698 / 2,414 / 5,551 ms                             | 425 ms; 813 / 3 ms                      |
+| 3   | `ADD 3` (same three facts)                                                                                                                                                                                | 3, 59 ms; personalised                       | `{"UPDATE":1}` (`2a05140b`)                                         | 15,486 / 5,134 / 19,955 ms\*                         | 648 ms; 801 / 3 ms                      |
+| 4   | `ADD 5`: the preference split into 3 ("…without jargon", "…step-by-step…", "…simple…"), plus `[identity] User is a beginner with TypeScript` and `[identity] User is a beginner with backend development` | 5, 61 ms; personalised                       | `{"UPDATE":1}` (`f9771eb0`)                                         | 4,850 / 2,626 / 10,375 ms                            | 722 ms; 805 / 3 ms                      |
+| 5   | `ADD 3` (same three facts)                                                                                                                                                                                | 3, 60 ms; personalised                       | `{"UPDATE":1}` (`76f0d542`)                                         | 3,927 / 2,432 / 7,961 ms                             | 647 ms; 807 / 3 ms                      |
+
+\* Run 3: OpenAI `gpt-6-luna` responses were slow during that run (all 6 turns took 5–20 s). Nothing failed. This runs in the background, so no answer waits on it.
+
+The other cases were the same in all 5 runs:
+
+- **c:** events `{}`
+- **d:** `ADD 2` ("building a payments app" / "wants to learn RAG properly"); the engine got `[REDACTED]` for both secrets, and no fragment appeared in any raw payload
+- **e:** engine input `messages=[the user's question]`, `contextMessages=[]`, events `{}`
+- **f:** write `disabled` (1 → 1 memories), recall `enabled=false`, 0 memories
+
+**Case b is now consistent: 5/5, versus 1/5 on v0.1.1.** The previous user message used to produce `NOOP 2` in every run, and in one run it was re-extracted as "User struggles with backend code". It now goes in as context only, so case b's events are exactly `{"UPDATE":1}`.
+
+### Latency
+
+- **Background write per turn (extract → decide → apply):** p50 about 3.6–4.9 s in 4 of 5 runs, and 15.5 s in the slow run 3. Range 2.1–20 s.
+  - A live chat turn on the new engine took 3,650 ms in the background (a code question, nothing stored).
+  - This runs after the answer is sent (fire-and-forget Inngest function), so it never delays chat.
+  - It's consistent with the engine's own report: `add()` p50 rose from 2.7 to 3.3 s in v0.2.0, from the longer extraction prompt plus one extra parallel Qdrant query per fact.
+- **Chat added latency: still ~0 ms.** The live chat with your 4 memories logged `added 0 ms` (lookup 638 ms inside 4,505 ms of retrieval). The read path didn't change (`search` + `getAll`; v0.2.0 only changed the write path), and the eval's standalone recall medians (425–722 ms) match the earlier runs.
+
+### Engine changes requested
+
+None. All four recommendations from this report were implemented in v0.2.0 and are used here: cross-category candidates, the skill-level rule, context-only messages, and `{ chat, embed }` + logger injection.

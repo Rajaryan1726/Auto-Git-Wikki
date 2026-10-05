@@ -1,10 +1,12 @@
 /**
  * User memory (Phase 4.5): the ONLY module that talks to custom-memory-engine.
  *
- * The engine is used as an unmodified dependency (pinned to a commit). Its LLM and
- * embedding clients are injected (`createMemoryEngine({ llm: { chat, openai } })`):
+ * The engine (v0.2.0) is used as an unmodified dependency (pinned to a commit). Its LLM
+ * and embedding clients and its logger are injected
+ * (`createMemoryEngine({ llm: { chat, embed }, logger })`):
  *   chat   -> llm.ts generateText (primary/fallback models + circuit breaker)
- *   openai -> an object with only `embeddings.create`, backed by our configured embedder
+ *   embed  -> our configured embedder (EMBEDDING_MODEL @ EMBEDDING_DIMS)
+ *   logger -> our console, message + counts only (never fact text)
  * Memories live in their own Qdrant collection (`user_memories_<model>_<dims>`), every
  * point scoped by userId. Only facts about the USER, from the user's own messages.
  */
@@ -12,8 +14,9 @@ import { eq } from 'drizzle-orm';
 import {
   createMemoryEngine,
   type EngineChatFn,
+  type EngineEmbedFn,
+  type EngineLogger,
   type EngineMemory,
-  type EngineOpenAILike,
   type MemoryEngine,
 } from 'custom-memory-engine';
 import type { MemoryCategory, UserMemory } from '@autowiki/shared';
@@ -23,8 +26,9 @@ import { env } from '../lib/env.js';
 import { embedderFor } from './embeddings.js';
 import { generateText } from './llm.js';
 import {
-  memorySourceMessages,
+  memoryTurnInput,
   mergeMemories,
+  summarizeLogDetails,
   recallWithFallback,
   type RecalledMemory,
   type TurnMessage,
@@ -51,23 +55,24 @@ export const engineChat: EngineChatFn = async ({ system, user, json }) => {
   return json ? parseJsonObject(text) : text;
 };
 
-/** The only part of the OpenAI SDK the engine uses once a client is injected. */
-function engineEmbeddings(): EngineOpenAILike {
+/** The engine's embed client: texts -> one vector per text, via our embedder. */
+function engineEmbed(): EngineEmbedFn {
   const embedder = embedderFor(env.EMBEDDING_MODEL, env.EMBEDDING_DIMS);
-  return {
-    embeddings: {
-      async create({ input }) {
-        // A single text is the engine's search query (or one fact): embedQuery shares the
-        // vector chat retrieval just computed for the same question (memoized).
-        const vectors =
-          input.length === 1
-            ? [await embedder.embedQuery(input[0]!)]
-            : await embedder.embedDocuments(input);
-        return { data: vectors.map((embedding, index) => ({ index, embedding })) };
-      },
-    },
-  };
+  return async (texts) =>
+    // A single text is the engine's search query (or one fact): embedQuery shares the
+    // vector chat retrieval just computed for the same question (memoized).
+    texts.length === 1 ? [await embedder.embedQuery(texts[0]!)] : embedder.embedDocuments(texts);
 }
+
+/** The engine's logger: its message (fact-free by contract) plus counts of the details. */
+export const engineLogger: EngineLogger = {
+  warn(message, details) {
+    const counts = summarizeLogDetails(details);
+    console.warn(
+      `[memory-engine] ${message}${Object.keys(counts).length ? ` ${JSON.stringify(counts)}` : ''}`,
+    );
+  },
+};
 
 let engine: MemoryEngine | null = null;
 
@@ -75,21 +80,17 @@ function getEngine(): MemoryEngine {
   if (!engine) {
     engine = createMemoryEngine({
       config: {
-        // Required by the engine's config check; not used, because the LLM and embedding
-        // clients are injected below.
-        openai: {
-          apiKey: env.OPENAI_API_KEY ?? 'injected-client',
-          chatModel: env.GEN_MODEL_PRIMARY,
-          embeddingModel: env.EMBEDDING_MODEL,
-          embeddingDim: env.EMBEDDING_DIMS,
-        },
+        // Only the vector size: chat and embeddings are injected below. Must match the
+        // embedder's dims and the collection (user_memories_<model>_<dims>).
+        openai: { embeddingDim: env.EMBEDDING_DIMS },
         qdrant: {
           url: env.QDRANT_URL,
           ...(env.QDRANT_API_KEY ? { apiKey: env.QDRANT_API_KEY } : {}),
         },
         collection: memoryCollectionName(env.EMBEDDING_MODEL, env.EMBEDDING_DIMS),
       },
-      llm: { chat: engineChat, openai: engineEmbeddings() },
+      llm: { chat: engineChat, embed: engineEmbed() },
+      logger: engineLogger,
     });
   }
   return engine;
@@ -140,8 +141,9 @@ export type RememberResult =
   | { status: 'done'; events: Record<string, number>; ids: string[] };
 
 /**
- * Learns from one chat turn. Only the user's own messages (current + previous) are
- * passed, after secret redaction; assistant answers and repo context never are.
+ * Learns from one chat turn. Only the user's own messages are passed, after secret
+ * redaction: the current one is extracted from, the previous one is context only (never
+ * re-extracted). Assistant answers and repo context are never passed.
  */
 export async function rememberTurn(input: {
   userId: string;
@@ -149,11 +151,12 @@ export async function rememberTurn(input: {
   metadata?: Record<string, unknown>;
 }): Promise<RememberResult> {
   if (!(await isMemoryEnabled(input.userId))) return { status: 'disabled' };
-  const messages = memorySourceMessages(input.thread);
+  const { messages, contextMessages } = memoryTurnInput(input.thread);
   if (messages.length === 0) return { status: 'nothing_to_learn' };
   const { results } = await getEngine().add(messages, {
     userId: input.userId,
     metadata: input.metadata ?? {},
+    contextMessages,
   });
   const events: Record<string, number> = {};
   for (const r of results) events[r.event] = (events[r.event] ?? 0) + 1;

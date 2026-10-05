@@ -65,6 +65,41 @@ export function memorySourceMessages(
     .filter((m) => m.content.length > 0);
 }
 
+/**
+ * The engine input for one turn: the current user message is the only one extracted
+ * from; the previous user message goes in as context only (engine v0.2.0
+ * `contextMessages`), so it is never re-extracted. Both are redacted; nothing else
+ * from the thread is passed.
+ */
+export function memoryTurnInput(thread: TurnMessage[]): {
+  messages: { role: 'user'; content: string }[];
+  contextMessages: { role: 'user'; content: string }[];
+} {
+  const [previous, current] = (() => {
+    const users = memorySourceMessages(thread, 2);
+    return users.length === 2 ? [users[0]!, users[1]!] : [undefined, users[0]];
+  })();
+  return {
+    messages: current ? [current] : [],
+    contextMessages: previous ? [previous] : [],
+  };
+}
+
+/**
+ * Engine log details reduced to counts (array length / object size / 1 per value): our
+ * logs never carry fact text or message content.
+ */
+export function summarizeLogDetails(details: unknown): Record<string, number> {
+  if (!details || typeof details !== 'object') return {};
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(details as Record<string, unknown>)) {
+    if (Array.isArray(value)) out[key] = value.length;
+    else if (value && typeof value === 'object') out[key] = Object.keys(value).length;
+    else out[key] = value === undefined || value === null ? 0 : 1;
+  }
+  return out;
+}
+
 export type RecalledMemory = { id: string; text: string; category: string };
 
 /**

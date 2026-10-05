@@ -49,13 +49,14 @@ export const rememberChatTurn = inngest.createFunction(
     return step.run('remember-turn', async () => {
       const thread = await loadTurn(parsed.data);
       if (!thread) return { status: 'skipped', reason: 'message not found for this user' };
+      const started = Date.now();
       const result = await rememberTurn({
         userId: parsed.data.userId,
         thread,
         metadata: { threadId: parsed.data.threadId, sessionId: parsed.data.threadId },
       });
       console.log(
-        `[memory] user ${parsed.data.userId} turn ${parsed.data.messageId}: ${result.status}` +
+        `[memory] user ${parsed.data.userId} turn ${parsed.data.messageId}: ${result.status} in ${Date.now() - started} ms` +
           ('events' in result ? ` ${JSON.stringify(result.events)}` : ''),
       );
       return result;

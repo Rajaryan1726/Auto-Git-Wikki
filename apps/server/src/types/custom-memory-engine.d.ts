@@ -27,18 +27,15 @@ declare module 'custom-memory-engine' {
     model?: string;
   }) => Promise<unknown>;
 
-  /** Only `embeddings.create` is used by the engine when a client is injected. */
-  export type EngineOpenAILike = {
-    embeddings: {
-      create(args: {
-        model: string;
-        input: string[];
-      }): Promise<{ data: { index: number; embedding: number[] }[] }>;
-    };
-  };
+  /** v0.2.0 injection: texts -> one vector per text, in order. */
+  export type EngineEmbedFn = (texts: string[]) => Promise<number[][]>;
+
+  /** v0.2.0: messages never contain fact text; details may. */
+  export type EngineLogger = { warn(message: string, details?: Record<string, unknown>): void };
 
   export type EngineConfig = {
-    openai: { apiKey: string; chatModel: string; embeddingModel: string; embeddingDim: number };
+    // apiKey / chatModel / embeddingModel are optional when chat and embed are injected.
+    openai: { apiKey?: string; chatModel?: string; embeddingModel?: string; embeddingDim: number };
     qdrant: { url: string; apiKey?: string };
     collection: string;
     scoreThreshold?: number;
@@ -48,7 +45,12 @@ declare module 'custom-memory-engine' {
     collection: string;
     add(
       messages: { role: 'user' | 'assistant'; content: string }[],
-      opts: { userId: string; metadata?: Record<string, unknown> },
+      opts: {
+        userId: string;
+        metadata?: Record<string, unknown>;
+        /** Shown to the extractor as context only; never extracted from. */
+        contextMessages?: { role: 'user' | 'assistant'; content: string }[];
+      },
     ): Promise<EngineAddResult>;
     search(
       query: string,
@@ -77,7 +79,8 @@ declare module 'custom-memory-engine' {
     collection?: string;
     extraction?: 'llm' | 'naive';
     dedupe?: boolean;
-    llm?: { chat: EngineChatFn; openai: EngineOpenAILike };
+    llm?: { chat: EngineChatFn; embed: EngineEmbedFn };
+    logger?: EngineLogger;
   }): MemoryEngine;
 
   export const CATEGORIES: EngineCategory[];
