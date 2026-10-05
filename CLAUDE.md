@@ -50,6 +50,7 @@ users
   github_refresh_token_enc (text, AES-256-GCM encrypted, nullable),
   github_refresh_token_expires_at (timestamptz, nullable),
   repos_synced_at (timestamptz, nullable; null = never synced -> auto-sync on first dashboard load),
+  memory_enabled (bool, default true; false = no memory extraction and no retrieval),
   created_at, updated_at
   -- Always get a token via getGithubToken(userId) / githubFetch() in
   -- services/github-token.ts: it refreshes expired tokens and retries once on 401.
@@ -115,6 +116,7 @@ chat_messages
   content (text), sources (jsonb: [{ n, path, startLine, endLine }]),
   model (text, nullable; assistant: generation model that answered),
   commit_sha (text, nullable; assistant: indexed commit the sources point at),
+  memory_ids (jsonb string[], default []; assistant: user memories used for the answer),
   created_at
   index (thread_id, created_at); chat_threads has index (user_id, repo_id, updated_at)
 ```
@@ -179,6 +181,16 @@ Style: radius 10–16px, 1px borders, no gradients, no emoji, inline stroke icon
 - Pages reuse the chat retrieval path (`searchRepo` with the job id → `rankHits` → `buildContext`) plus short excerpts of the page's files; the same untrusted-context rules as chat (`UNTRUSTED_CONTEXT_RULES`).
 - Hallucination check: file paths in backticks / link targets that match no indexed file or directory → one retry listing them; leftovers are un-linked and counted in `wiki_pages.meta`.
 - Pure helpers (outline validation, prompts, path check) are unit-tested; orchestration is `services/wiki.ts`.
+
+## User memory conventions (Phase 4.5)
+
+- Uses the user's own engine `custom-memory-engine` (GitHub dependency pinned to a commit), unmodified. Only `services/memory.ts` imports it; everything else talks to that adapter.
+- The engine's clients are injected: chat → `llm.ts` `generateText` (fallback + breaker), embeddings → our `embedderFor(EMBEDDING_MODEL, EMBEDDING_DIMS)`. Own Qdrant collection `user_memories_<model>_<dims>` (never a code collection); every point scoped by `userId`.
+- **User-level facts only, from the user's own messages only.** `memorySourceMessages` passes just the current and previous user message, after `redactSecrets`; assistant answers, code context and wiki text are never a source (prompt-injection defence).
+- Write: after a finished answer (not stopped / errored, memory enabled) the ask route sends `chat/turn.completed`; `remember-chat-turn` (concurrency key userId, limit 1) runs extract → decide → apply. Fire and forget.
+- Read: `recallForQuestion` (top `MEMORY_RECALL_LIMIT` by similarity + preferences) runs in parallel with retrieval; its `MEMORY_RECALL_TIMEOUT_MS` limit starts when retrieval finishes, so memory adds at most that much latency. Timeout / error → answer without memory. Query embeddings are memoised for 60 s, so the lookup reuses retrieval's vector.
+- Prompt: `aboutUserSection` is appended after the rules: tailoring only, never evidence, never cited, never overrides grounding / untrusted-context rules. Used ids are saved in `chat_messages.memory_ids`; the UI shows "Personalised using N memories" → Settings.
+- API: `GET/DELETE /api/memories`, `DELETE /api/memories/:id` (hard delete incl. history), `GET/PATCH /api/me/settings`. `npm run eval:memory` runs the scripted cases.
 
 ## LLM circuit breaker
 

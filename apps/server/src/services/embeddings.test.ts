@@ -254,3 +254,22 @@ test('OpenAI: wrong dimension and missing key are rejected', async () => {
   });
   await assert.rejects(noKey.embedQuery('q'), /OPENAI_API_KEY is not set/);
 });
+
+test('memoizedQuery shares in-flight and recent results, never caches failures', async () => {
+  const { memoizedQuery } = await import('./embeddings.js');
+  let calls = 0;
+  const compute = () => {
+    calls++;
+    return new Promise<number[]>((r) => setTimeout(() => r([1, 2]), 10));
+  };
+  const [a, b] = await Promise.all([memoizedQuery('k1', compute), memoizedQuery('k1', compute)]);
+  assert.deepEqual(a, [1, 2]);
+  assert.equal(a, b);
+  assert.equal(calls, 1, 'concurrent callers share one request');
+  await memoizedQuery('k1', compute);
+  assert.equal(calls, 1, 'recent result reused');
+  await memoizedQuery('k1', compute, Date.now() + 61_000);
+  assert.equal(calls, 2, 'expired after the TTL');
+  await assert.rejects(memoizedQuery('k2', () => Promise.reject(new Error('boom'))));
+  assert.deepEqual(await memoizedQuery('k2', () => Promise.resolve([3])), [3]);
+});

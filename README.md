@@ -26,24 +26,25 @@ If port 5432 or 6333 is already taken, change `POSTGRES_HOST_PORT` / `QDRANT_HOS
 
 ## Scripts
 
-| Script                                        | What it does                                                                                     |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `npm run dev`                                 | Shared types (watch) + API server + web app                                                      |
-| `npm run build`                               | Build shared, server and web                                                                     |
-| `npm run typecheck`                           | Type-check every workspace                                                                       |
-| `npm run lint`                                | ESLint across the repo                                                                           |
-| `npm test`                                    | Server unit + integration tests (integration needs infra up)                                     |
-| `npm run dev:chunks -- <repoId> <path>`       | Print the chunks for one file (`local <path>` for a file on disk; `--text` shows chunk text)     |
-| `npm run dev:search -- <repoId> "<question>"` | Semantic search over a repo's last successful index (`--k 5`, `--text`)                          |
-| `npm run dev:ask -- <repoId> "<question>"`    | Ask one question through the chat RAG pipeline (`--follow-up "<earlier question>"`)              |
-| `npm run eval:retrieval`                      | Retrieval eval: hit@3 and MRR@10, dense vs re-scored (`--verbose` shows the top 3)               |
-| `npm run dev:wiki -- <repo>`                  | Wiki outline, per-page model/tokens/time and path-check counts (`--regenerate`, `--page <slug>`) |
-| `npm run format`                              | Prettier write                                                                                   |
-| `npm run db:generate`                         | Generate a Drizzle migration from the schema                                                     |
-| `npm run db:migrate`                          | Apply pending migrations                                                                         |
-| `npm run infra:up`                            | Start Postgres + Qdrant (waits until healthy)                                                    |
-| `npm run infra:down`                          | Stop the containers (data volumes are kept)                                                      |
-| `npm run inngest:dev`                         | Start the Inngest dev server                                                                     |
+| Script                                        | What it does                                                                                      |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `npm run dev`                                 | Shared types (watch) + API server + web app                                                       |
+| `npm run build`                               | Build shared, server and web                                                                      |
+| `npm run typecheck`                           | Type-check every workspace                                                                        |
+| `npm run lint`                                | ESLint across the repo                                                                            |
+| `npm test`                                    | Server unit + integration tests (integration needs infra up)                                      |
+| `npm run dev:chunks -- <repoId> <path>`       | Print the chunks for one file (`local <path>` for a file on disk; `--text` shows chunk text)      |
+| `npm run dev:search -- <repoId> "<question>"` | Semantic search over a repo's last successful index (`--k 5`, `--text`)                           |
+| `npm run dev:ask -- <repoId> "<question>"`    | Ask one question through the chat RAG pipeline (`--follow-up "<earlier question>"`)               |
+| `npm run eval:retrieval`                      | Retrieval eval: hit@3 and MRR@10, dense vs re-scored (`--verbose` shows the top 3)                |
+| `npm run eval:memory`                         | User-memory eval: 6 scripted conversations + latency / memory-down checks (throw-away eval users) |
+| `npm run dev:wiki -- <repo>`                  | Wiki outline, per-page model/tokens/time and path-check counts (`--regenerate`, `--page <slug>`)  |
+| `npm run format`                              | Prettier write                                                                                    |
+| `npm run db:generate`                         | Generate a Drizzle migration from the schema                                                      |
+| `npm run db:migrate`                          | Apply pending migrations                                                                          |
+| `npm run infra:up`                            | Start Postgres + Qdrant (waits until healthy)                                                     |
+| `npm run infra:down`                          | Stop the containers (data volumes are kept)                                                       |
+| `npm run inngest:dev`                         | Start the Inngest dev server                                                                      |
 
 ## Layout
 

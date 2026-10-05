@@ -9,6 +9,7 @@ import {
   recallWithFallback,
   redactSecrets,
   withTimeout,
+  withTimeoutAfter,
 } from './memory-context.js';
 
 test('redactSecrets removes provider keys and tokens', () => {
@@ -118,4 +119,28 @@ test('recallWithFallback returns the fallback on timeout, error or throw', async
   assert.deepEqual(await recallWithFallback(() => Promise.resolve(['m']), 50, []), ['m']);
   assert.equal(errors.length, 3);
   assert.ok(errors[0] instanceof TimeoutError);
+});
+
+test('withTimeoutAfter: the clock starts when the gate (retrieval) settles', async () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  // Memory takes 120 ms, retrieval 100 ms, budget 50 ms after retrieval: memory is used.
+  const work = sleep(120).then(() => 'memories');
+  assert.equal(await withTimeoutAfter(work, sleep(100), 50), 'memories');
+  // Memory takes 300 ms: gives up about 50 ms after retrieval finished, not before.
+  const started = Date.now();
+  await assert.rejects(
+    withTimeoutAfter(
+      sleep(300).then(() => 'late'),
+      sleep(100),
+      50,
+    ),
+    TimeoutError,
+  );
+  const waited = Date.now() - started;
+  assert.ok(waited >= 140 && waited < 280, `waited ${waited} ms`);
+  // A failed retrieval still arms the timer.
+  await assert.rejects(
+    withTimeoutAfter(sleep(300), Promise.reject(new Error('retrieval failed')), 20),
+    TimeoutError,
+  );
 });

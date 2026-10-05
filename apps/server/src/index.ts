@@ -2,6 +2,7 @@ import { env } from './lib/env.js';
 import { createApp } from './app.js';
 import { pool } from './db/client.js';
 import { defaultCollectionName, ensureDefaultCollection } from './services/qdrant.js';
+import { warmUpMemory } from './services/memory.js';
 
 async function main(): Promise<void> {
   try {
@@ -13,6 +14,9 @@ async function main(): Promise<void> {
       err instanceof Error ? err.message : err,
     );
   }
+
+  // Not awaited: memory is best-effort and must never delay startup.
+  void warmUpMemory();
 
   const server = createApp().listen(env.PORT, () => {
     console.log(`[server] listening on http://localhost:${env.PORT}`);

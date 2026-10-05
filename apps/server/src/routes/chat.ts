@@ -151,15 +151,21 @@ threadsRouter.post('/:id/ask', async (req, res) => {
   let commitSha: string | null = null;
   const userId = currentUser(req).id;
   try {
+    const started = Date.now();
+    let retrievalMs = 0;
+    const preparing = prepareAnswer({
+      repoId: thread.repoId,
+      repoFullName: threadRepo.fullName,
+      question,
+      history,
+    }).finally(() => (retrievalMs = Date.now() - started));
+    // Memory runs alongside retrieval and may take at most MEMORY_RECALL_TIMEOUT_MS more.
     const [prepared, recall] = await Promise.all([
-      prepareAnswer({
-        repoId: thread.repoId,
-        repoFullName: threadRepo.fullName,
-        question,
-        history,
-      }),
-      recallForQuestion(userId, question),
+      preparing,
+      recallForQuestion(userId, question, { after: preparing }),
     ]);
+    // Time memory added on top of retrieval (they run in parallel).
+    const memoryWaitMs = Math.max(0, Date.now() - started - retrievalMs);
     const memoryIds = recall.memories.map((m) => m.id);
     const aboutUser = aboutUserSection(recall.memories);
     if (aboutUser) prepared.system = `${prepared.system}\n\n${aboutUser}`;
@@ -201,7 +207,7 @@ threadsRouter.post('/:id/ask', async (req, res) => {
     });
     console.log(
       `[chat] thread ${thread.id}: answered by ${model}` +
-        ` | memory: ${memoryIds.length} used, lookup ${recall.ms} ms` +
+        ` | memory: ${memoryIds.length} used, lookup ${recall.ms} ms (retrieval ${retrievalMs} ms, added ${memoryWaitMs} ms)` +
         (recall.error ? ` (skipped: ${recall.error})` : '') +
         (failed.length ? ` (fallback after ${failed.join(', ')})` : '') +
         ` | query: ${prepared.rewritten ? `rewritten -> "${prepared.searchQuery}"` : 'as asked'}` +

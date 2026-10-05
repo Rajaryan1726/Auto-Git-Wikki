@@ -57,7 +57,12 @@ function engineEmbeddings(): EngineOpenAILike {
   return {
     embeddings: {
       async create({ input }) {
-        const vectors = await embedder.embedDocuments(input);
+        // A single text is the engine's search query (or one fact): embedQuery shares the
+        // vector chat retrieval just computed for the same question (memoized).
+        const vectors =
+          input.length === 1
+            ? [await embedder.embedQuery(input[0]!)]
+            : await embedder.embedDocuments(input);
         return { data: vectors.map((embedding, index) => ({ index, embedding })) };
       },
     },
@@ -93,6 +98,24 @@ function getEngine(): MemoryEngine {
 /** Test hook: use a stub engine. */
 export function setMemoryEngineForTests(stub: MemoryEngine | null): void {
   engine = stub;
+}
+
+/**
+ * Creates the memory collection and payload indexes at startup (the engine does this on
+ * first use, which would otherwise make the first chat lookup hit its timeout).
+ */
+export async function warmUpMemory(): Promise<void> {
+  try {
+    await getEngine().getAll({ userId: 'warm-up' });
+    console.log(
+      `[memory] ready (collection ${memoryCollectionName(env.EMBEDDING_MODEL, env.EMBEDDING_DIMS)})`,
+    );
+  } catch (err) {
+    console.warn(
+      '[memory] warm-up failed (chat works without memory):',
+      err instanceof Error ? err.message : err,
+    );
+  }
 }
 
 // ---------------------------------------------------------------- settings
@@ -159,14 +182,16 @@ export type Recall = {
 
 /**
  * Memories for one question: the top question-relevant ones plus the user's preferences.
- * Hard time limit (MEMORY_RECALL_TIMEOUT_MS): on timeout or error the answer is
- * generated without memory.
+ * Hard time limit (MEMORY_RECALL_TIMEOUT_MS), counted from when `opts.after` settles (the
+ * parallel retrieval in chat; now by default): on timeout or error the answer is generated
+ * without memory, so memory adds at most that long to an answer.
  */
 export async function recallForQuestion(
   userId: string,
   question: string,
-  timeoutMs = env.MEMORY_RECALL_TIMEOUT_MS,
+  opts: { timeoutMs?: number; after?: Promise<unknown> } = {},
 ): Promise<Recall> {
+  const timeoutMs = opts.timeoutMs ?? env.MEMORY_RECALL_TIMEOUT_MS;
   const started = Date.now();
   let error: string | null = null;
   const result = await recallWithFallback(
@@ -192,6 +217,7 @@ export async function recallForQuestion(
     (err) => {
       error = err instanceof Error ? err.message : String(err);
     },
+    opts.after,
   );
   return { ...result, ms: Date.now() - started, error };
 }

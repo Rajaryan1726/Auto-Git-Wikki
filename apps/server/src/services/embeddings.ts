@@ -368,10 +368,33 @@ export function embedSizing(model: string): { batchSize: number; stepSize: numbe
   return { batchSize: p.batchSize, stepSize: p.stepSize };
 }
 
+/**
+ * Short-lived memo of query embeddings: chat retrieval and the user-memory lookup embed the
+ * same question at the same moment, so the second one reuses the first (in-flight
+ * included) instead of paying for another API round trip. Keyed by the exact text sent.
+ */
+const QUERY_MEMO_TTL_MS = 60_000;
+const QUERY_MEMO_MAX = 200;
+const queryMemo = new Map<string, { at: number; vector: Promise<number[]> }>();
+
+export function memoizedQuery(
+  key: string,
+  compute: () => Promise<number[]>,
+  now = Date.now(),
+): Promise<number[]> {
+  const hit = queryMemo.get(key);
+  if (hit && now - hit.at < QUERY_MEMO_TTL_MS) return hit.vector;
+  const vector = compute();
+  queryMemo.set(key, { at: now, vector });
+  vector.catch(() => queryMemo.delete(key)); // never cache a failure
+  if (queryMemo.size > QUERY_MEMO_MAX) queryMemo.delete(queryMemo.keys().next().value!);
+  return vector;
+}
+
 /** Embedder for a specific model/dims (a job's or a repo's), never silently the env default. */
 export function embedderFor(model: string, dims: number): Embedder {
   const p = PROVIDERS[providerForModel(model)];
-  return p.create({
+  const embedder = p.create({
     model,
     dims,
     apiKey: p.apiKey(),
@@ -379,4 +402,9 @@ export function embedderFor(model: string, dims: number): Embedder {
     batchSize: p.batchSize,
     maxItemsPerMinute: p.stepSize,
   });
+  return {
+    ...embedder,
+    embedQuery: (text) =>
+      memoizedQuery(`${model}|${dims}|${text}`, () => embedder.embedQuery(text)),
+  };
 }

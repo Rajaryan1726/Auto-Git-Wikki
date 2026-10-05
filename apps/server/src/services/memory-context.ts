@@ -116,17 +116,43 @@ export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 /**
- * Runs a memory lookup with a hard time limit. Any error or timeout yields `fallback`,
- * so chat never waits on or fails because of memory.
+ * Like withTimeout, but the clock starts when `gate` settles. In chat the gate is the
+ * retrieval that runs in parallel: waiting while retrieval is still running costs
+ * nothing, so `ms` bounds only the time memory adds on top of it.
+ */
+export function withTimeoutAfter<T>(
+  promise: Promise<T>,
+  gate: Promise<unknown>,
+  ms: number,
+): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  let done = false;
+  const timeout = new Promise<never>((_, reject) => {
+    const arm = () => {
+      if (!done) timer = setTimeout(() => reject(new TimeoutError(ms)), ms);
+    };
+    gate.then(arm, arm);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    done = true;
+    clearTimeout(timer);
+  });
+}
+
+/**
+ * Runs a memory lookup with a hard time limit that starts when `gate` settles (now, by
+ * default). Any error or timeout yields `fallback`, so chat never waits on or fails
+ * because of memory.
  */
 export async function recallWithFallback<T>(
   lookup: () => Promise<T>,
   ms: number,
   fallback: T,
   onError: (err: unknown) => void = () => {},
+  gate: Promise<unknown> = Promise.resolve(),
 ): Promise<T> {
   try {
-    return await withTimeout(lookup(), ms);
+    return await withTimeoutAfter(lookup(), gate, ms);
   } catch (err) {
     onError(err);
     return fallback;

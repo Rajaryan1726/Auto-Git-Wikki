@@ -83,7 +83,7 @@ function ConfirmForgetDialog({
           type="button"
           onClick={onConfirm}
           disabled={busy}
-          className={`${buttonClass.primary} bg-danger`}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-danger px-4 text-sm font-medium text-bg transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy ? (
             <LoaderCircle size={16} className="animate-spin" aria-hidden />
