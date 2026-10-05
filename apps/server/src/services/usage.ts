@@ -170,6 +170,11 @@ export async function getUsage(userId: string, now = new Date()): Promise<UsageR
 
 // ---------------------------------------------------------------- checks
 
+/** "1 index job", "20 index jobs". */
+export function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
 function limitReached(message: string): HttpError {
   return new HttpError(429, 'LIMIT_REACHED', message);
 }
@@ -195,7 +200,7 @@ export async function assertCanAsk(userId: string, now = new Date()): Promise<vo
   const c = usage.limits.chatMessagesLastHour;
   if (c.used >= c.limit) {
     throw limitReached(
-      `You have sent ${c.limit} chat messages in the last hour, the current limit. Please try again in a few minutes.`,
+      `You have sent ${plural(c.limit, 'chat message')} in the last hour, the current limit. Please try again in a few minutes.`,
     );
   }
   if (usage.tokens.used >= usage.tokens.budget) throw budgetExhausted(now);
@@ -217,7 +222,7 @@ export async function assertCanIndex(
   }
   if (indexJobsToday.used >= indexJobsToday.limit) {
     throw limitReached(
-      `You have started ${indexJobsToday.limit} index jobs today, the daily limit. It resets ${untilReset(now)} (00:00 UTC).`,
+      `You have started ${plural(indexJobsToday.limit, 'index job')} today, the daily limit. It resets ${untilReset(now)} (00:00 UTC).`,
     );
   }
   if (usage.tokens.used >= usage.tokens.budget) throw budgetExhausted(now);
@@ -229,7 +234,7 @@ export async function assertCanRegenerate(userId: string, now = new Date()): Pro
   const c = usage.limits.wikiRegenerationsToday;
   if (c.used >= c.limit) {
     throw limitReached(
-      `You have regenerated ${c.limit} wikis today, the daily limit. It resets ${untilReset(now)} (00:00 UTC).`,
+      `You have regenerated ${plural(c.limit, 'wiki')} today, the daily limit. It resets ${untilReset(now)} (00:00 UTC).`,
     );
   }
   if (usage.tokens.used >= usage.tokens.budget) throw budgetExhausted(now);

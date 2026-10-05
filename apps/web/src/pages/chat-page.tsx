@@ -587,8 +587,8 @@ function RepoChat({ repo }: { repo: RepoSummary }) {
   const threadId = threadParam && threadParam !== NEW_THREAD ? threadParam : null;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(240px,280px)_minmax(0,1fr)]">
-      <aside className="flex flex-col gap-5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(240px,280px)_minmax(0,1fr)]">
+      <aside className="flex min-w-0 flex-col gap-5">
         <RepoSwitcher selectedId={repo.id} />
         <ThreadList
           repoId={repo.id}
@@ -644,7 +644,7 @@ function SelectedRepo({ repoId }: { repoId: string }) {
   // Never show the chat UI for a repo without a successful index.
   if (!repo.data.status.commitSha) {
     return (
-      <div className="grid gap-6 lg:grid-cols-[minmax(240px,280px)_minmax(0,1fr)]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(240px,280px)_minmax(0,1fr)]">
         <aside>
           <RepoSwitcher selectedId={repo.data.id} />
         </aside>

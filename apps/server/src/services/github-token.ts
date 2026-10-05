@@ -39,7 +39,7 @@ export function reauthRequired(): HttpError {
   return new HttpError(
     401,
     'GITHUB_REAUTH_REQUIRED',
-    'GitHub authorization expired. Please sign in again.',
+    'Your GitHub access expired or was revoked. Please sign in again.',
   );
 }
 

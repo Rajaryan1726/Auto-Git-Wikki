@@ -211,17 +211,21 @@ function DeleteRepoData({ repo }: { repo: RepoSummary }) {
         busy={del.isPending}
         error={del.error?.message ?? null}
         onCancel={() => setOpen(false)}
-        onConfirm={() =>
-          del.mutate(undefined, {
-            onSuccess: (report) => {
-              setOpen(false);
-              const b = report.before;
-              toast.success(
-                `Deleted ${b.qdrantCodePoints ?? 0} vectors, ${b.wikiPages ?? 0} wiki pages, ` +
-                  `${b.chatThreads ?? 0} chats and ${b.indexJobs ?? 0} index jobs.`,
-              );
-            },
-          })
+        onConfirm={
+          () =>
+            // mutateAsync, not per-call callbacks: this button unmounts as soon as the repo has
+            // no data left, and TanStack Query skips callbacks of unmounted observers.
+            void del
+              .mutateAsync()
+              .then((report) => {
+                setOpen(false);
+                const b = report.before;
+                toast.success(
+                  `Deleted ${b.qdrantCodePoints ?? 0} vectors, ${b.wikiPages ?? 0} wiki pages, ` +
+                    `${b.chatThreads ?? 0} chats and ${b.indexJobs ?? 0} index jobs.`,
+                );
+              })
+              .catch(() => undefined) // shown in the dialog via del.error
         }
       >
         This removes the index (vectors), the wiki, every chat about this repository and its index

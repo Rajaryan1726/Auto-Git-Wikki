@@ -69,10 +69,11 @@ function MemoryRow({ memory }: { memory: UserMemory }) {
       <button
         type="button"
         onClick={() =>
-          del.mutate(memory.id, {
-            onSuccess: () => toast.success('Forgotten.'),
-            onError: (err) => toast.error(`Could not forget it: ${err.message}`),
-          })
+          // The row unmounts once deleted: use the promise, not per-call callbacks.
+          void del.mutateAsync(memory.id).then(
+            () => toast.success('Forgotten.'),
+            (err: Error) => toast.error(`Could not forget it: ${err.message}`),
+          )
         }
         disabled={del.isPending}
         aria-label={`Forget: ${memory.text}`}

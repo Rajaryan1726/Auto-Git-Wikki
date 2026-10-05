@@ -11,7 +11,15 @@ async function fetchMe(): Promise<AuthUser | null> {
   try {
     return meResponseSchema.parse(await apiFetch<unknown>('/api/auth/me')).user;
   } catch (err) {
-    if (err instanceof ApiRequestError && err.status === 401) return null;
+    // No (valid) session: simply signed out. Revoked GitHub access is different: it is
+    // rethrown so the session-end handler below explains it on the login page.
+    if (
+      err instanceof ApiRequestError &&
+      err.status === 401 &&
+      err.code !== 'GITHUB_REAUTH_REQUIRED'
+    ) {
+      return null;
+    }
     throw err;
   }
 }

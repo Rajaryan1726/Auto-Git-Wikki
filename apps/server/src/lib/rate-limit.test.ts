@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SlidingWindowLimiter, rateLimit } from './rate-limit.js';
 import { HttpError } from './http-error.js';
-import { untilReset, utcDayStart } from '../services/usage.js';
+import { plural, untilReset, utcDayStart } from '../services/usage.js';
 
 test('sliding window allows `limit` hits per window per key, then reports the wait', () => {
   let t = 1_000_000;
@@ -38,4 +38,10 @@ test('daily usage window is the UTC day', () => {
   assert.equal(utcDayStart(now).toISOString(), '2026-10-05T00:00:00.000Z');
   assert.equal(untilReset(now), 'in 5 h 30 min');
   assert.equal(untilReset(new Date('2026-10-05T23:50:00Z')), 'in 10 min');
+});
+
+test('limit messages pluralise counts', () => {
+  assert.equal(plural(1, 'index job'), '1 index job');
+  assert.equal(plural(20, 'index job'), '20 index jobs');
+  assert.equal(plural(1, 'wiki'), '1 wiki');
 });

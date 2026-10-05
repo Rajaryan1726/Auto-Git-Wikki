@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { LoaderCircle } from 'lucide-react';
+import { ApiRequestError } from '../../lib/api';
 import { useAuth } from './auth-context';
 
 function FullPageSpinner() {
@@ -26,7 +27,10 @@ export function RequireAuth() {
   const { user, isLoading, error, endReason } = useAuth();
   const location = useLocation();
   if (isLoading) return <FullPageSpinner />;
-  if (!user && error) return <AuthUnavailable message={error.message} />;
+  // Revoked GitHub access is a session end, not an outage: the provider is signing out.
+  const reauth = error instanceof ApiRequestError && error.code === 'GITHUB_REAUTH_REQUIRED';
+  if (!user && error && !reauth && !endReason) return <AuthUnavailable message={error.message} />;
+  if (!user && reauth && !endReason) return <FullPageSpinner />;
   if (!user) {
     const to = endReason ? `/login?error=${endReason}` : '/login';
     return <Navigate to={to} replace state={{ from: location.pathname }} />;
