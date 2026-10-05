@@ -72,31 +72,38 @@ Razorpay test mode as described in [docs/BILLING.md](docs/BILLING.md) and subscr
 
 ```mermaid
 flowchart LR
-  subgraph Browser
-    WEB["Web app<br/>React + Vite + TanStack Query"]
-  end
+  WEB["Web app<br/>React + Vite + TanStack Query"]
   subgraph API["API server (Express)"]
-    ROUTES["Routes<br/>auth · repos · index · wiki · chat · memories · me"]
-    SERVICES["Services<br/>github · search · rag · wiki · memory · usage · llm"]
-    INN["Inngest functions<br/>index-repo · regenerate-wiki · remember-chat-turn"]
+    ROUTES["Routes<br/>auth · repos · index · wiki<br/>chat · memories · billing"]
+    SERVICES["Services<br/>github · search · rag · wiki<br/>memory · billing · llm"]
   end
-  PG[("PostgreSQL<br/>users, repos, jobs,<br/>wiki, chats, llm_usage")]
-  QD[("Qdrant<br/>code_* collections<br/>user_memories_*")]
-  WORKER["Inngest dev server<br/>(queue + retries)"]
-  GH["GitHub API<br/>OAuth, repos, git trees/blobs"]
-  LLM["Gemini → OpenAI fallback<br/>(circuit breaker)"]
-  EMB["OpenAI embeddings"]
+  subgraph JOBS["Background jobs (Inngest)"]
+    WORKER["Inngest server<br/>queue + retries"]
+    INN["Functions<br/>index-repo · regenerate-wiki<br/>remember-chat-turn · billing"]
+  end
+  subgraph Data["Storage"]
+    PG[("PostgreSQL<br/>users, repos, jobs, wiki,<br/>chats, usage, subscriptions")]
+    QD[("Qdrant<br/>code_* collections<br/>user_memories_*")]
+  end
+  subgraph External["External services"]
+    GH["GitHub API<br/>OAuth, repos, git trees/blobs"]
+    LLM["Gemini → OpenAI fallback<br/>(circuit breaker)"]
+    EMB["OpenAI embeddings"]
+    RZP["Razorpay<br/>Subscriptions + Checkout"]
+  end
 
-  WEB -- "JSON + SSE (chat stream)" --> ROUTES
+  WEB -- "JSON + SSE" --> ROUTES
   ROUTES --> SERVICES
+  ROUTES -- "events" --> WORKER
+  WORKER --> INN
+  INN --> SERVICES
   SERVICES --> PG
   SERVICES --> QD
   SERVICES --> GH
   SERVICES --> LLM
   SERVICES --> EMB
-  ROUTES -- "send events" --> WORKER
-  WORKER -- "runs steps via /api/inngest" --> INN
-  INN --> SERVICES
+  SERVICES --> RZP
+  RZP -. "signed webhooks" .-> ROUTES
 ```
 
 - **Indexing** (`index-repo`): resolve commit → list + filter files → fetch and chunk with

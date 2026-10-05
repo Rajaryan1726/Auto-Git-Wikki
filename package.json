@@ -34,16 +34,19 @@
     "billing:sync-plans": "tsx apps/server/src/scripts/billing-sync-plans.ts",
     "billing:cost-report": "tsx apps/server/src/scripts/billing-cost-report.ts",
     "billing:simulate": "tsx apps/server/src/scripts/billing-simulate-webhook.ts",
-    "check:contrast": "npm run check:contrast -w @autowiki/web"
+    "check:contrast": "npm run check:contrast -w @autowiki/web",
+    "capture:screenshots": "tsx scripts/capture-screenshots.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@mermaid-js/mermaid-cli": "^12.0.0",
     "concurrently": "^10.0.5",
     "eslint": "^10.12.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
     "globals": "^17.13.0",
+    "playwright": "^1.63.0",
     "prettier": "^3.9.9",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.71.0"

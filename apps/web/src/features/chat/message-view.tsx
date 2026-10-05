@@ -6,7 +6,7 @@ import { CircleAlert, FileCode2, RotateCw, UserRound } from 'lucide-react';
 import type { ChatSource } from '@autowiki/shared';
 import { buttonClass } from '../../lib/ui';
 import { sourceUrl } from './api';
-import { CITE_PREFIX, remarkCitations } from './citations';
+import { CITE_PREFIX, fixFenceCitations, remarkCitations } from './citations';
 import { PlansLink } from '../../components/error-with-upgrade';
 
 type SourceLink = { fullName: string; commitSha: string | null; sources: ChatSource[] };
@@ -74,7 +74,7 @@ export function MarkdownView({
 
 /** Assistant answer: Markdown + highlighted code; [n] markers become small source links. */
 export function AnswerMarkdown({ text, link }: { text: string; link: SourceLink }) {
-  return <MarkdownView text={text} citations={link} />;
+  return <MarkdownView text={fixFenceCitations(text)} citations={link} />;
 }
 
 /** "Sources" row: one chip per source, linking to the lines at the indexed commit. */

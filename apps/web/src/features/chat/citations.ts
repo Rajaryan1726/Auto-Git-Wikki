@@ -36,3 +36,15 @@ export function remarkCitations() {
     });
   };
 }
+
+/**
+ * Models sometimes put a citation on the closing code fence ("``` [1]"). That is not a
+ * valid closing fence, so the rest of the answer would render inside the code block: move
+ * the citations onto their own line after the fence.
+ */
+export function fixFenceCitations(text: string): string {
+  return text.replace(
+    /^(\s*(?:```|~~~))[ \t]+((?:\[\d{1,2}(?:\s*,\s*\d{1,2})*\][ \t]*)+)$/gm,
+    '$1\n\n$2',
+  );
+}
